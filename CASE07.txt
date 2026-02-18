@@ -1,0 +1,3 @@
+2026-03-07 19:12:00 INFO  POST /api/search q="x"
+2026-03-07 19:12:00 WARN  Rate limit exceeded for apiKey=abc
+2026-03-07 19:12:00 INFO  Returning 429 Too Many Requests

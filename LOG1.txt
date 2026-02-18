@@ -1,0 +1,7 @@
+2026-02-12 09:14:21,104 INFO  [OrderController] POST /api/v1/orders userId=78421
+2026-02-12 09:14:21,118 INFO  [OrderService] Create order started orderId=ORD-553019
+2026-02-12 09:14:21,201 INFO  [InventoryClient] Checking inventory productId=9912 qty=2
+2026-02-12 09:14:21,342 ERROR [InventoryClient] HTTP 401 Unauthorized from Inventory API
+2026-02-12 09:14:21,343 ERROR [InventoryClient] Missing or invalid Authorization header (InventoryClient.java:87)
+2026-02-12 09:14:21,355 ERROR [OrderService] Failed to create order orderId=ORD-553019
+2026-02-12 09:14:21,360 INFO  [OrderController] Responding 500 INTERNAL_SERVER_ERROR requestId=REQ-1f2a
