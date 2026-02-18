@@ -1,19 +1,17 @@
 from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
-from typing import List
 
-from app.llm import analyze_log  # נשאר כמו שהיה אצלך
+from app.llm import analyze_log
 
-app = FastAPI(title="Log Analyzer")
+app = FastAPI(title="Log Analyzer", version="1.0.0")
+
 
 class AnalyzeRequest(BaseModel):
     log: str
 
-@app.get("/", response_class=HTMLResponse)
-def home():
-    # דף HTML מינימלי שמאפשר להעלות/להדביק לוג ולנתח
-    return HTMLResponse("""
+
+HTML = r"""
 <!doctype html>
 <html lang="he" dir="rtl">
 <head>
@@ -24,10 +22,11 @@ def home():
     :root{
       --bg:#0b1220; --card:#0f1a2e; --text:#e8eefc; --muted:#9fb0d0;
       --border:#233454; --green:#22c55e; --orange:#f59e0b; --red:#ef4444;
+      --blue:#2b6ef2;
     }
     body{margin:0;font-family:system-ui,Segoe UI,Arial;background:linear-gradient(180deg,#070b14, #0b1220);color:var(--text)}
     .wrap{max-width:920px;margin:0 auto;padding:28px}
-    h1{margin:0 0 10px;font-size:40px;letter-spacing:.2px}
+    h1{margin:0 0 10px;font-size:40px}
     .sub{color:var(--muted);margin-bottom:18px}
     .grid{display:grid;grid-template-columns:1fr;gap:14px}
     .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
@@ -35,27 +34,27 @@ def home():
       border-radius:14px;padding:14px;resize:vertical;outline:none}
     .card{background:rgba(15,26,46,.72);border:1px solid var(--border);border-radius:18px;padding:16px}
     .btn{border:0;border-radius:14px;padding:12px 16px;font-weight:700;cursor:pointer}
-    .btn-primary{background:#2b6ef2;color:white}
+    .btn-primary{background:var(--blue);color:white}
     .btn-ghost{background:transparent;color:var(--text);border:1px solid var(--border)}
     .pill{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;border:1px solid var(--border);color:var(--muted)}
     .k{font-size:13px;color:var(--muted);margin-bottom:8px}
     .title{display:flex;align-items:center;justify-content:space-between;gap:10px}
-    .tag{font-weight:800;padding:6px 10px;border-radius:999px;color:#0b1220}
+    .tag{font-weight:900;padding:6px 10px;border-radius:999px;color:#0b1220}
     .tag.green{background:var(--green)}
     .tag.orange{background:var(--orange)}
     .tag.red{background:var(--red)}
     ul{margin:0;padding-inline-start:18px}
-    li{margin:6px 0;color:var(--text)}
+    li{margin:6px 0}
     .muted{color:var(--muted)}
-    .err{color:var(--red);font-weight:700}
-    .footer{margin-top:18px;color:var(--muted);font-size:13px}
+    .err{color:var(--red);font-weight:800}
     input[type=file]{color:var(--muted)}
+    pre{white-space:pre-wrap;word-break:break-word;margin:0}
   </style>
 </head>
 <body>
   <div class="wrap">
     <h1>Log Analyzer</h1>
-    <div class="sub">הדבק לוג או העלה קובץ. התוצאה תופיע ככרטיסים ברורים (לא JSON).</div>
+    <div class="sub">מדביקים לוג או מעלים קובץ → Analyze → מקבלים תוצאה “יפה” (לא JSON).</div>
 
     <div class="card">
       <div class="row">
@@ -63,9 +62,11 @@ def home():
         <input id="file" type="file" accept=".log,.txt" />
         <button class="btn btn-ghost" onclick="clearAll()">נקה</button>
       </div>
+
       <div style="height:10px"></div>
       <div class="k">או הדבק כאן לוג:</div>
       <textarea id="log" placeholder="הדבק כאן את הלוג..."></textarea>
+
       <div style="height:12px"></div>
       <div class="row">
         <button class="btn btn-primary" onclick="analyze()">Analyze</button>
@@ -74,25 +75,22 @@ def home():
     </div>
 
     <div id="out" class="grid" style="margin-top:14px"></div>
-
-    <div class="footer">
-      טיפ: אם השירות “נרדם” ב-Render Free, הבקשה הראשונה יכולה לקחת זמן.
-    </div>
   </div>
 
 <script>
-  function severityTag(text){
-    const t = (text || "").toLowerCase();
-    // חוקים פשוטים לדוגמה. אפשר לשפר אחר כך:
-    if (t.includes("401") || t.includes("unauthorized") || t.includes("503") || t.includes("outage") || t.includes("fatal"))
-      return ["דחוף", "red"];
-    if (t.includes("timeout") || t.includes("degraded") || t.includes("pool") || t.includes("circuit"))
-      return ["בינוני", "orange"];
-    return ["לא דחוף", "green"];
+  function escapeHtml(s){
+    return s.replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");
+  }
+
+  function severityTagFromSteps(nextSteps){
+    const text = (nextSteps || []).join(" ").toLowerCase();
+    if (text.includes("immediately") || text.includes("urgent") || text.includes("rotate") || text.includes("breach")) return ["דחוף","red"];
+    if (text.includes("check") || text.includes("inspect") || text.includes("validate") || text.includes("metrics")) return ["בינוני","orange"];
+    return ["לא דחוף","green"];
   }
 
   function card(title, contentHtml, tag){
-    const [label, color] = tag || ["", "green"];
+    const [label, color] = tag || ["לא דחוף","green"];
     return `
       <div class="card">
         <div class="title">
@@ -110,33 +108,27 @@ def home():
     return `<ul>${items.map(x => `<li>${escapeHtml(String(x))}</li>`).join("")}</ul>`;
   }
 
-  function escapeHtml(s){
-    return s.replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");
-  }
-
   function render(result){
     const out = document.getElementById("out");
     out.innerHTML = "";
 
-    const tag1 = severityTag(result.primary_failure);
-    out.innerHTML += card("עובדות מאושרות ✅", list(result.confirmed_facts), ["לא דחוף","green"]);
-    out.innerHTML += card("הכשל הראשי 🎯", `<div>${escapeHtml(result.primary_failure || "—")}</div>`, tag1);
-    out.innerHTML += card("Root Cause 🧠", `<div>${escapeHtml(result.root_cause || "—")}</div>`, tag1);
+    const nextStepsTag = severityTagFromSteps(result.next_steps);
 
-    // hypotheses_ranked
-    let hyp = result.hypotheses_ranked || [];
-    let hypHtml = hyp.length
+    out.innerHTML += card("עובדות מאושרות ✅", list(result.confirmed_facts), ["לא דחוף","green"]);
+    out.innerHTML += card("הכשל הראשי 🎯", `<div>${escapeHtml(result.primary_failure || "—")}</div>`, ["בינוני","orange"]);
+    out.innerHTML += card("Root Cause 🧠", `<div>${escapeHtml(result.root_cause || "—")}</div>`, ["בינוני","orange"]);
+
+    const hyp = result.hypotheses_ranked || [];
+    const hypHtml = hyp.length
       ? `<ul>${hyp.map(h => `<li><b>#${h.rank}</b> ${escapeHtml(h.description)} <span class="muted">— ${escapeHtml(h.justification || "")}</span></li>`).join("")}</ul>`
       : `<div class="muted">—</div>`;
     out.innerHTML += card("השערות מדורגות 📌", hypHtml, ["בינוני","orange"]);
 
-    // next steps
-    const tagSteps = ["לא דחוף","green"];
-    out.innerHTML += card("NEXT STEPS ➜", list(result.next_steps), tagSteps);
+    // NEXT STEPS – עם צבע לפי דחיפות
+    out.innerHTML += card("NEXT STEPS ➜", list(result.next_steps), nextStepsTag);
 
-    // contradictions
-    const tagCon = (result.contradictions && result.contradictions.length) ? ["דחוף","red"] : ["לא דחוף","green"];
-    out.innerHTML += card("סתירות / נקודות חשודות 🧩", list(result.contradictions), tagCon);
+    const conTag = (result.contradictions && result.contradictions.length) ? ["דחוף","red"] : ["לא דחוף","green"];
+    out.innerHTML += card("סתירות / נקודות חשודות 🧩", list(result.contradictions), conTag);
   }
 
   function setStatus(msg, isErr=false){
@@ -172,7 +164,7 @@ def home():
         const t = await res.text();
         setStatus("שגיאה מהשרת: " + res.status, true);
         document.getElementById("out").innerHTML =
-          `<div class="card"><div class="err">שגיאה</div><pre style="white-space:pre-wrap;color:#ffb4b4">${escapeHtml(t)}</pre></div>`;
+          `<div class="card"><div class="err">שגיאה</div><pre style="color:#ffb4b4">${escapeHtml(t)}</pre></div>`;
         return;
       }
 
@@ -193,11 +185,23 @@ def home():
 </script>
 </body>
 </html>
-""")
+"""
+
+
+@app.get("/", response_class=HTMLResponse)
+def home():
+    return HTMLResponse(HTML)
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
 
 @app.post("/analyze")
 def analyze(req: AnalyzeRequest):
     return analyze_log(req.log)
+
 
 @app.post("/analyze-file")
 async def analyze_file(file: UploadFile = File(...)):
