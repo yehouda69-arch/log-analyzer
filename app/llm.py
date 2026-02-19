@@ -1,4 +1,6 @@
 import re
+from typing import Optional, List, Tuple
+
 from app.schemas import LogAnalysisResponse, Hypothesis, NextStep
 
 
@@ -6,18 +8,53 @@ def _contains(pattern: str, text: str) -> bool:
     return re.search(pattern, text, re.IGNORECASE) is not None
 
 
+def _find_first(pattern: str, text: str) -> Optional[str]:
+    m = re.search(pattern, text, re.IGNORECASE)
+    return m.group(0) if m else None
+
+
+def _find_first_group(pattern: str, text: str, group: int = 1) -> Optional[str]:
+    m = re.search(pattern, text, re.IGNORECASE)
+    return m.group(group) if m else None
+
+
 def _has_real_timeout(log_text: str) -> bool:
-    """
-    Real timeout evidence only (not parameter names like 'millisecondsTimeout').
-    """
+    # Real timeout evidence only (not parameter names like 'millisecondsTimeout').
     return _contains(r"(timeoutexception|sockettimeoutexception|timed out|request timeout|\b408\b|\b504\b)", log_text)
+
+
+def _extract_exception_type(log_text: str) -> Optional[str]:
+    # Common .NET exception formats:
+    # "System.NullReferenceException: ..."
+    # "NullReferenceException: ..."
+    return _find_first_group(r"(?:System\.)?([A-Za-z]+Exception)\b", log_text, 1)
+
+
+def _extract_method_hint(log_text: str) -> Optional[str]:
+    # Try to capture a failing method/hook name
+    # Example: "Failed to invoke hook method: GetOrders"
+    hook = _find_first_group(r"hook method:\s*([A-Za-z0-9_]+)", log_text, 1)
+    if hook:
+        return hook
+
+    # Try to capture top stack frame like "at Namespace.Type.Method("
+    frame = _find_first_group(r"\bat\s+[A-Za-z0-9_.]+\.(\w+)\s*\(", log_text, 1)
+    return frame
+
+
+def _extract_top_frames(log_text: str, limit: int = 3) -> List[str]:
+    frames = re.findall(r"\bat\s+([A-Za-z0-9_.]+\.\w+)\s*\(", log_text, flags=re.IGNORECASE)
+    out = []
+    for f in frames[:limit]:
+        out.append(f)
+    return out
 
 
 def _severity_from_log(log_text: str) -> int:
     # 3 = High (Sev1), 2 = Medium (Sev2), 1 = Low (Sev3)
     if _contains(r"\b503\b|\b502\b|\b500\b|outofmemory|no space left|sslhandshake|certificateexpired|too many connections|circuit breaker.*open", log_text):
         return 3
-    if _contains(r"\b401\b|unauthorized|\b404\b|rate limit|\b429\b|failed to acquire connection", log_text) or _has_real_timeout(log_text):
+    if _contains(r"\b401\b|unauthorized|\b404\b|rate limit|\b429\b|failed to acquire connection", log_text) or _has_real_timeout(log_text) or _contains(r"(?:system\.)?(?:aggregateexception|nullreferenceexception)\b", log_text):
         return 2
     return 1
 
@@ -27,10 +64,24 @@ def _severity_label(score: int) -> str:
 
 
 def analyze_log(log_text: str) -> LogAnalysisResponse:
-    facts = []
-    contradictions = []
+    facts: List[str] = []
+    contradictions: List[str] = []
 
-    # Facts (strict)
+    # --- Extract key signals (best-effort) ---
+    ex_type = _extract_exception_type(log_text)
+    method_hint = _extract_method_hint(log_text)
+    top_frames = _extract_top_frames(log_text, limit=3)
+
+    # --- Facts (only if explicitly present) ---
+    if ex_type:
+        facts.append(f"Log contains exception: {ex_type}.")
+    if _contains(r"object reference not set", log_text):
+        facts.append("Log contains message: 'Object reference not set to an instance of an object'.")
+    if _contains(r"failed to invoke hook method", log_text) and method_hint:
+        facts.append(f"Log indicates failing hook method: {method_hint}.")
+    if top_frames:
+        facts.append("Top stack frames: " + " → ".join(top_frames))
+
     if _contains(r"\b401\b|unauthorized", log_text):
         facts.append("Log contains an authentication failure (401/Unauthorized).")
     if _has_real_timeout(log_text):
@@ -57,26 +108,39 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
     if not facts:
         facts.append("No recognizable failure signature found in provided log snippet.")
 
+    # Simple contradiction example
     if _contains(r"active connections:\s*100/100", log_text) and _contains(r"active connections:\s*5/100", log_text):
         contradictions.append("Pool drops from 100/100 to 5/100 within the snippet; suggests transient stall/reset (not a persistent leak).")
 
     severity_score = _severity_from_log(log_text)
     severity_label = _severity_label(severity_score)
 
-    # NEW: Prefer explicit exceptions over keyword routing
-    if _contains(r"nullreferenceexception", log_text):
+    # --- Routing (prefer explicit exception evidence first) ---
+    # NullReference / AggregateException are common in .NET logs
+    if _contains(r"(?:system\.)?nullreferenceexception\b", log_text):
         primary_failure = "NullReferenceException"
         root_cause = "NullReferenceException present in log (object reference not set)."
         hypotheses = [
             Hypothesis(rank=1, description="Null object dereference in application code", justification="NullReferenceException present in log"),
-            Hypothesis(rank=2, description="Unexpected/invalid input leading to null values", justification="NullReferenceException commonly triggered by missing fields"),
+            Hypothesis(rank=2, description="Unexpected/invalid input leading to null values", justification="NullReferenceException often triggered by missing fields"),
         ]
         next_steps = [
-            NextStep(text="Find the first NullReferenceException stack trace frame and identify which variable was null.", urgency="high"),
+            NextStep(text="Locate the first NullReferenceException stack trace frame and identify which variable was null.", urgency="high"),
             NextStep(text="Add input validation/guards around the failing code path and log key identifiers (IDs) for reproducibility.", urgency="medium"),
         ]
 
-    # Conservative, evidence-driven routing
+    elif _contains(r"(?:system\.)?aggregateexception\b", log_text) and ex_type:
+        primary_failure = "AggregateException"
+        root_cause = "AggregateException present in log (one or more inner exceptions)."
+        hypotheses = [
+            Hypothesis(rank=1, description="Inner exception is the real root cause", justification="AggregateException indicates inner exceptions"),
+            Hypothesis(rank=2, description="Async task failure aggregated at await/wait boundary", justification="AggregateException commonly wraps async failures"),
+        ]
+        next_steps = [
+            NextStep(text="Find the first INNER exception inside AggregateException and treat that as root cause.", urgency="high"),
+            NextStep(text="Log the inner exception type/message and first stack frame to speed up triage.", urgency="medium"),
+        ]
+
     elif _contains(r"\b401\b|unauthorized", log_text):
         primary_failure = "Downstream service rejected request (401 Unauthorized)"
         root_cause = "Missing/invalid Authorization for downstream call (based on 401 evidence in log)"
