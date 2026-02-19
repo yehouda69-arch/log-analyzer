@@ -1,4 +1,0 @@
-2026-03-01 02:01:11 INFO  Writing /var/log/app/archive-2026-03-01.gz
-2026-03-01 02:01:11 ERROR java.io.IOException: No space left on device
-2026-03-01 02:01:11 WARN  Failed to rotate logs
-2026-03-01 02:01:12 ERROR Request failed - returning 500
