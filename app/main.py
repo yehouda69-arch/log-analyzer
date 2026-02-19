@@ -79,11 +79,22 @@ HTML = r"""
 
 <script>
   function escapeHtml(s){
-    return s.replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");
+    return String(s).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");
+  }
+
+  function textFromMaybeObj(x){
+    if (x == null) return "";
+    if (typeof x === "string") return x;
+    if (typeof x === "object"){
+      if ("text" in x && x.text != null) return String(x.text);
+      if ("title" in x && x.title != null) return String(x.title);
+      try { return JSON.stringify(x); } catch(e) { return String(x); }
+    }
+    return String(x);
   }
 
   function severityTagFromSteps(nextSteps){
-    const text = (nextSteps || []).join(" ").toLowerCase();
+    const text = (nextSteps || []).map(textFromMaybeObj).join(" ").toLowerCase();
     if (text.includes("immediately") || text.includes("urgent") || text.includes("rotate") || text.includes("breach")) return ["דחוף","red"];
     if (text.includes("check") || text.includes("inspect") || text.includes("validate") || text.includes("metrics")) return ["בינוני","orange"];
     return ["לא דחוף","green"];
@@ -105,7 +116,16 @@ HTML = r"""
 
   function list(items){
     if(!items || !items.length) return '<div class="muted">—</div>';
-    return `<ul>${items.map(x => `<li>${escapeHtml(String(x))}</li>`).join("")}</ul>`;
+
+    const html = items.map(x => {
+      if (x && typeof x === "object" && x.text != null){
+        const u = x.urgency ? ` <span class="muted">(${escapeHtml(x.urgency)})</span>` : "";
+        return `<li>${escapeHtml(x.text)}${u}</li>`;
+      }
+      return `<li>${escapeHtml(textFromMaybeObj(x))}</li>`;
+    }).join("");
+
+    return `<ul>${html}</ul>`;
   }
 
   function render(result){
