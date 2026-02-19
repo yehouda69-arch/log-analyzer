@@ -1,7 +1,0 @@
-2026-02-12 14:32:09 INFO  DB connectivity check OK: SELECT 1 in 8ms
-2026-02-12 14:32:10 INFO  Active connections: 100/100
-2026-02-12 14:32:11 ERROR Timeout waiting for connection from pool (30000ms)
-2026-02-12 14:32:13 WARN  DB server reports: too many connections
-2026-02-12 14:32:17 ERROR Service unavailable - returning 503
-2026-02-12 14:32:18 INFO  Active connections: 5/100
-2026-02-12 14:32:22 WARN  Circuit breaker OPEN for DBClient; failing fast 60s
