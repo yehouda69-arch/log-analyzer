@@ -1,5 +1,0 @@
-2026-02-12 09:14:21,104 INFO  POST /api/v1/orders userId=78421
-2026-02-12 09:14:21,220 INFO  InventoryClient.checkInventory productId=9912
-2026-02-12 09:14:21,342 ERROR Inventory API response 401 Unauthorized
-2026-02-12 09:14:21,343 ERROR Caused by: Missing or invalid Authorization header
-2026-02-12 09:14:21,351 ERROR Failed to create order -> returning 500
