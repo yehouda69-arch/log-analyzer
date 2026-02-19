@@ -1,3 +1,0 @@
-2026-03-08 03:55:10 WARN  consumer_lag topic=orders partition=2 lag=980000
-2026-03-08 03:55:11 ERROR Commit failed: RebalanceInProgress
-2026-03-08 03:55:12 WARN  Processing slowed: avg=2 msg/s
