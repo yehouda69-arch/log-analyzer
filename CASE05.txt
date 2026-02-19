@@ -1,4 +1,0 @@
-2026-03-05 08:10:14 INFO  Calling https://payments.internal/api/charge
-2026-03-05 08:10:14 ERROR SSLHandshakeException: PKIX path validation failed
-2026-03-05 08:10:14 ERROR Caused by: CertificateExpiredException: NotAfter: 2026-03-01
-2026-03-05 08:10:15 ERROR Returning 502 Bad Gateway
