@@ -39,9 +39,7 @@ HTML = r"""
 
     /* Header */
     header{text-align:center;margin-bottom:36px}
-
     .logo-wrap{display:inline-flex;align-items:center;gap:14px;margin-bottom:8px}
-
     h1{
       margin:0;font-size:2.6rem;font-weight:900;
       background:linear-gradient(135deg,var(--accent),var(--accent2));
@@ -51,7 +49,6 @@ HTML = r"""
 
     /* Magnifying glass */
     .mag{position:relative;width:58px;height:58px;flex-shrink:0}
-
     .mag-circle{
       position:absolute;top:0;left:0;
       width:44px;height:44px;border-radius:50%;
@@ -59,15 +56,12 @@ HTML = r"""
       box-shadow:0 0 16px rgba(0,212,255,.5),inset 0 0 10px rgba(0,212,255,.08);
       overflow:hidden;background:#050d1a;z-index:2
     }
-
     #matrixCanvas{width:100%;height:100%;display:block;border-radius:50%}
-
     .mag-handle{
       position:absolute;bottom:2px;right:2px;
       width:22px;height:5px;
       background:linear-gradient(90deg,var(--accent),var(--accent2));
-      border-radius:3px;
-      transform:rotate(45deg);transform-origin:left center;
+      border-radius:3px;transform:rotate(45deg);transform-origin:left center;
       box-shadow:0 0 8px rgba(0,212,255,.4);z-index:1
     }
 
@@ -131,6 +125,22 @@ HTML = r"""
     @keyframes spin{to{transform:rotate(360deg)}}
     .loader-text{color:var(--muted);font-size:.85rem;font-family:monospace;animation:pulse 1.4s ease-in-out infinite}
     @keyframes pulse{0%,100%{opacity:.3}50%{opacity:1}}
+
+    /* Timeout banner */
+    .timeout-banner{
+      display:none;align-items:center;gap:12px;
+      background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.3);
+      border-radius:12px;padding:14px 18px;margin-top:14px;
+    }
+    .timeout-banner.show{display:flex}
+    .timeout-icon{font-size:1.4rem}
+    .timeout-body{flex:1}
+    .timeout-title{font-weight:700;color:var(--orange);margin-bottom:3px;font-size:.95rem}
+    .timeout-desc{color:var(--muted);font-size:.82rem;line-height:1.5}
+    .timeout-tips{margin:6px 0 0 0;padding-inline-start:16px;color:var(--muted);font-size:.8rem}
+    .timeout-tips li{margin:3px 0}
+    .btn-retry{background:rgba(245,158,11,.15);color:var(--orange);border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:7px 14px;font-weight:700;cursor:pointer;font-size:.82rem;white-space:nowrap}
+    .btn-retry:hover{background:rgba(245,158,11,.25)}
 
     /* Results toolbar */
     .results-bar{
@@ -200,7 +210,6 @@ HTML = r"""
 
   <!-- Input Card -->
   <div class="card">
-
     <div class="drop-zone" id="dropZone">
       <input type="file" id="file" accept=".log,.txt,.json,.csv">
       <div class="drop-icon">📂</div>
@@ -225,6 +234,21 @@ HTML = r"""
       <button class="btn btn-ghost" onclick="clearAll()">🗑 נקה</button>
       <span id="status" class="muted"></span>
     </div>
+  </div>
+
+  <!-- Timeout Banner -->
+  <div class="timeout-banner" id="timeoutBanner">
+    <div class="timeout-icon">⏱️</div>
+    <div class="timeout-body">
+      <div class="timeout-title">פג זמן הבקשה (Timeout)</div>
+      <div class="timeout-desc">הניתוח לקח יותר מדי זמן — ייתכן שהלוג ארוך מדי או שיש עומס על השרת.</div>
+      <ul class="timeout-tips">
+        <li>נסה לקצר את הלוג — הדבק רק את החלק הרלוונטי (50–200 שורות)</li>
+        <li>המתן 30 שניות ונסה שוב</li>
+        <li>אם הבעיה חוזרת — בדוק את חיבור הרשת שלך</li>
+      </ul>
+    </div>
+    <button class="btn-retry" onclick="analyze()">🔄 נסה שוב</button>
   </div>
 
   <!-- Loader -->
@@ -254,21 +278,19 @@ HTML = r"""
   const SIZE = 88;
   canvas.width = SIZE;
   canvas.height = SIZE;
-
   const chars = '01エラーERROR警WARN0xFF48454C50ABDE';
   const fontSize = 7;
   const cols = Math.floor(SIZE / fontSize);
-  const drops = Array(cols).fill(0).map(() => Math.random() * -15);
+  const drops = Array(cols).fill(0).map(function(){ return Math.random() * -15; });
   const colors = ['#00d4ff','#00ffcc','#7c4dff','#b39ddb','#00e5ff'];
-
   function drawMatrix() {
     ctx.fillStyle = 'rgba(5,13,26,0.18)';
     ctx.fillRect(0, 0, SIZE, SIZE);
     ctx.font = 'bold ' + fontSize + 'px monospace';
-    for (let i = 0; i < drops.length; i++) {
-      const char = chars[Math.floor(Math.random() * chars.length)];
-      const x = i * fontSize;
-      const y = drops[i] * fontSize;
+    for (var i = 0; i < drops.length; i++) {
+      var char = chars[Math.floor(Math.random() * chars.length)];
+      var x = i * fontSize;
+      var y = drops[i] * fontSize;
       if (Math.random() > 0.88) {
         ctx.fillStyle = '#ffffff';
         ctx.shadowColor = '#00d4ff';
@@ -286,25 +308,27 @@ HTML = r"""
 })();
 
 // ─── State ────────────────────────────────────────────────────
-let lastResult = null;
+var lastResult = null;
+var TIMEOUT_MS = 90000; // 90 שניות
 
 // ─── Drag & Drop ──────────────────────────────────────────────
-const dropZone = document.getElementById('dropZone');
-const fileInput = document.getElementById('file');
+var dropZone = document.getElementById('dropZone');
+var fileInput = document.getElementById('file');
 
-['dragenter','dragover'].forEach(e =>
-  dropZone.addEventListener(e, ev => { ev.preventDefault(); dropZone.classList.add('dragover'); }));
-['dragleave','drop'].forEach(e =>
-  dropZone.addEventListener(e, ev => { ev.preventDefault(); dropZone.classList.remove('dragover'); }));
-
-dropZone.addEventListener('drop', ev => {
-  const f = ev.dataTransfer.files[0];
+['dragenter','dragover'].forEach(function(e){
+  dropZone.addEventListener(e, function(ev){ ev.preventDefault(); dropZone.classList.add('dragover'); });
+});
+['dragleave','drop'].forEach(function(e){
+  dropZone.addEventListener(e, function(ev){ ev.preventDefault(); dropZone.classList.remove('dragover'); });
+});
+dropZone.addEventListener('drop', function(ev){
+  var f = ev.dataTransfer.files[0];
   if (f) loadFile(f);
 });
-fileInput.addEventListener('change', () => {
+fileInput.addEventListener('change', function(){
   if (fileInput.files[0]) loadFile(fileInput.files[0]);
 });
-document.getElementById('removeFile').addEventListener('click', e => {
+document.getElementById('removeFile').addEventListener('click', function(e){
   e.stopPropagation();
   fileInput.value = '';
   document.getElementById('fileBadge').classList.remove('show');
@@ -312,27 +336,28 @@ document.getElementById('removeFile').addEventListener('click', e => {
 });
 
 function loadFile(file) {
-  const size = file.size > 1024*1024
+  var size = file.size > 1024*1024
     ? (file.size/1024/1024).toFixed(1)+' MB'
     : (file.size/1024).toFixed(1)+' KB';
   document.getElementById('fileName').textContent = file.name;
   document.getElementById('fileSize').textContent = '('+size+')';
   document.getElementById('fileBadge').classList.add('show');
-  const reader = new FileReader();
-  reader.onload = e => { document.getElementById('log').value = e.target.result; };
+  var reader = new FileReader();
+  reader.onload = function(e){ document.getElementById('log').value = e.target.result; };
   reader.readAsText(file);
 }
 
 // ─── Loader ───────────────────────────────────────────────────
-const loaderMsgs = ['מנתח לוגים...','מזהה שגיאות...','בודק דפוסים...','מסכם תוצאות...'];
-let loaderInterval;
+var loaderMsgs = ['מנתח לוגים...','מזהה שגיאות...','בודק דפוסים...','מסכם תוצאות...'];
+var loaderInterval;
 
 function showLoader() {
   document.getElementById('loader').classList.add('active');
   document.getElementById('results-section').style.display = 'none';
+  document.getElementById('timeoutBanner').classList.remove('show');
   document.getElementById('analyzeBtn').disabled = true;
-  let i = 0;
-  loaderInterval = setInterval(() => {
+  var i = 0;
+  loaderInterval = setInterval(function(){
     document.getElementById('loaderText').textContent = loaderMsgs[i++ % loaderMsgs.length];
   }, 900);
 }
@@ -360,7 +385,7 @@ function textFromMaybeObj(x){
 }
 
 function severityTagFromSteps(nextSteps){
-  const text = (nextSteps || []).map(textFromMaybeObj).join(" ").toLowerCase();
+  var text = (nextSteps || []).map(textFromMaybeObj).join(" ").toLowerCase();
   if (text.includes("immediately")||text.includes("urgent")||text.includes("rotate")||text.includes("breach")) return ["דחוף","red"];
   if (text.includes("check")||text.includes("inspect")||text.includes("validate")||text.includes("metrics")) return ["בינוני","orange"];
   return ["לא דחוף","green"];
@@ -368,18 +393,18 @@ function severityTagFromSteps(nextSteps){
 
 // ─── Syntax Highlighting ──────────────────────────────────────
 function highlightText(text){
-  return text.split('\n').map(line => {
+  return text.split('\n').map(function(line){
     if (!line.trim()) return '';
     if (/^#{1,3}\s/.test(line))
       return '<span class="section-hdr">'+escapeHtml(line.replace(/^#{1,3}\s/,''))+'</span>';
-    const low = line.toLowerCase();
-    let cls = '';
-    if (/\b(error|fatal|exception|critical)\b/.test(low)) cls = 'hl-error';
+    var low = line.toLowerCase();
+    var cls = '';
+    if (/\b(error|fatal|exception|critical|timeout)\b/.test(low)) cls = 'hl-error';
     else if (/\bwarn/.test(low)) cls = 'hl-warn';
     else if (/\b(success|ok|passed|done)\b/.test(low)) cls = 'hl-ok';
     else if (/\binfo\b/.test(low)) cls = 'hl-info';
     else if (/\bdebug\b/.test(low)) cls = 'hl-debug';
-    let out = escapeHtml(line);
+    var out = escapeHtml(line);
     out = out.replace(/(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2})/g, function(m){ return '<span class="hl-ts">'+m+'</span>'; });
     out = out.replace(/\b(\d{1,3}\.){3}\d{1,3}\b/g, function(m){ return '<span class="hl-ip">'+m+'</span>'; });
     out = out.replace(/(\/[\w.\-_/]+)/g, function(m){ return '<span class="hl-path">'+m+'</span>'; });
@@ -390,29 +415,31 @@ function highlightText(text){
 
 // ─── Summary Badges ───────────────────────────────────────────
 function buildSummaryBadges(result){
-  const text = JSON.stringify(result).toLowerCase();
-  const count = function(patterns){ return patterns.reduce(function(a,p){ return a+(text.match(p)||[]).length; }, 0); };
-  const errors = count([/error/g,/fatal/g,/exception/g]);
-  const warns  = count([/warn/g]);
-  const ok     = count([/success/g]);
-  let html = '';
-  if (errors) html += '<span class="badge badge-error">🔴 '+errors+' שגיאות</span> ';
-  if (warns)  html += '<span class="badge badge-warn">🟠 '+warns+' אזהרות</span> ';
-  if (ok)     html += '<span class="badge badge-ok">🟢 '+ok+' הצלחות</span>';
+  var text = JSON.stringify(result).toLowerCase();
+  var count = function(patterns){ return patterns.reduce(function(a,p){ return a+(text.match(p)||[]).length; }, 0); };
+  var errors   = count([/error/g,/fatal/g,/exception/g,/timeout/g]);
+  var warns    = count([/warn/g]);
+  var ok       = count([/success/g]);
+  var timeouts = count([/timeout/g]);
+  var html = '';
+  if (errors)   html += '<span class="badge badge-error">🔴 '+errors+' שגיאות</span> ';
+  if (timeouts) html += '<span class="badge badge-warn">⏱ '+timeouts+' Timeout</span> ';
+  if (warns)    html += '<span class="badge badge-warn">🟠 '+warns+' אזהרות</span> ';
+  if (ok)       html += '<span class="badge badge-ok">🟢 '+ok+' הצלחות</span>';
   document.getElementById('summaryBadges').innerHTML = html;
 }
 
 // ─── Render ───────────────────────────────────────────────────
 function card(title, contentHtml, tag){
-  const label = tag[0], color = tag[1];
+  var label = tag[0], color = tag[1];
   return '<div class="card"><div class="title-row"><div style="font-size:18px;font-weight:900">'+title+'</div><span class="tag '+color+'">'+label+'</span></div><div style="height:10px"></div>'+contentHtml+'</div>';
 }
 
 function list(items){
   if (!items || !items.length) return '<div class="muted">—</div>';
-  const html = items.map(function(x){
+  var html = items.map(function(x){
     if (x && typeof x === "object" && x.text != null){
-      const u = x.urgency ? ' <span class="muted">('+escapeHtml(x.urgency)+')</span>' : "";
+      var u = x.urgency ? ' <span class="muted">('+escapeHtml(x.urgency)+')</span>' : "";
       return '<li>'+escapeHtml(x.text)+u+'</li>';
     }
     return '<li>'+escapeHtml(textFromMaybeObj(x))+'</li>';
@@ -422,78 +449,111 @@ function list(items){
 
 function render(result){
   lastResult = result;
-  const out = document.getElementById("out");
+  var out = document.getElementById("out");
   out.innerHTML = "";
   buildSummaryBadges(result);
-  const nextStepsTag = severityTagFromSteps(result.next_steps);
+  var nextStepsTag = severityTagFromSteps(result.next_steps);
 
-  const factsHtml = (result.confirmed_facts||[]).length
+  var factsHtml = (result.confirmed_facts||[]).length
     ? '<pre style="font-family:monospace;font-size:.82rem;line-height:1.8">'+highlightText((result.confirmed_facts||[]).map(textFromMaybeObj).join('\n'))+'</pre>'
     : '<div class="muted">—</div>';
   out.innerHTML += card("עובדות מאושרות ✅", factsHtml, ["לא דחוף","green"]);
   out.innerHTML += card("הכשל הראשי 🎯", '<pre style="font-family:monospace;font-size:.85rem;line-height:1.7">'+highlightText(result.primary_failure||"—")+'</pre>', ["בינוני","orange"]);
   out.innerHTML += card("Root Cause 🧠", '<pre style="font-family:monospace;font-size:.85rem;line-height:1.7">'+highlightText(result.root_cause||"—")+'</pre>', ["בינוני","orange"]);
 
-  const hyp = result.hypotheses_ranked || [];
-  const hypHtml = hyp.length
+  var hyp = result.hypotheses_ranked || [];
+  var hypHtml = hyp.length
     ? '<ul>'+hyp.map(function(h){ return '<li><b>#'+h.rank+'</b> '+escapeHtml(h.description)+' <span class="muted">— '+escapeHtml(h.justification||"")+'</span></li>'; }).join("")+'</ul>'
     : '<div class="muted">—</div>';
   out.innerHTML += card("השערות מדורגות 📌", hypHtml, ["בינוני","orange"]);
   out.innerHTML += card("NEXT STEPS ➜", list(result.next_steps), nextStepsTag);
 
-  const conTag = (result.contradictions&&result.contradictions.length) ? ["דחוף","red"] : ["לא דחוף","green"];
+  var conTag = (result.contradictions&&result.contradictions.length) ? ["דחוף","red"] : ["לא דחוף","green"];
   out.innerHTML += card("סתירות / נקודות חשודות 🧩", list(result.contradictions), conTag);
 
   document.getElementById('results-section').style.display = 'block';
 }
 
-// ─── Analyze ──────────────────────────────────────────────────
+// ─── Analyze (with Timeout handling) ─────────────────────────
 function setStatus(msg, isErr){
-  const el = document.getElementById("status");
+  var el = document.getElementById("status");
   el.className = isErr ? "err" : "muted";
   el.textContent = msg || "";
+}
+
+function showTimeoutBanner() {
+  document.getElementById('timeoutBanner').classList.add('show');
 }
 
 async function analyze(){
   setStatus("מנתח…");
   showLoader();
-  const file = document.getElementById("file").files && document.getElementById("file").files[0];
-  const logText = document.getElementById("log").value && document.getElementById("log").value.trim();
+
+  var file = document.getElementById("file").files && document.getElementById("file").files[0];
+  var logText = document.getElementById("log").value && document.getElementById("log").value.trim();
+
+  // AbortController for timeout
+  var controller = new AbortController();
+  var timeoutTimer = setTimeout(function(){
+    controller.abort();
+  }, TIMEOUT_MS);
+
   try{
-    let res;
+    var res;
     if(file){
-      const fd = new FormData();
+      var fd = new FormData();
       fd.append("file", file);
-      res = await fetch("/analyze-file", { method:"POST", body: fd });
+      res = await fetch("/analyze-file", { method:"POST", body: fd, signal: controller.signal });
     } else {
-      if(!logText){ hideLoader(); setStatus("תדביק לוג או תעלה קובץ.", true); return; }
+      if(!logText){ hideLoader(); clearTimeout(timeoutTimer); setStatus("תדביק לוג או תעלה קובץ.", true); return; }
       res = await fetch("/analyze", {
         method:"POST",
         headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify({ log: logText })
+        body: JSON.stringify({ log: logText }),
+        signal: controller.signal
       });
     }
+
+    clearTimeout(timeoutTimer);
     hideLoader();
+
     if(!res.ok){
-      const t = await res.text();
-      setStatus("שגיאה מהשרת: " + res.status, true);
-      document.getElementById('results-section').style.display = 'block';
-      document.getElementById("out").innerHTML = '<div class="card"><div class="err">שגיאה</div><pre style="color:#ffb4b4">'+escapeHtml(t)+'</pre></div>';
+      var t = await res.text();
+      // בדיקה אם השרת החזיר timeout
+      var isTimeout = res.status === 504 || res.status === 408 || t.toLowerCase().includes('timeout');
+      if (isTimeout) {
+        setStatus("", false);
+        showTimeoutBanner();
+      } else {
+        setStatus("שגיאה מהשרת: " + res.status, true);
+        document.getElementById('results-section').style.display = 'block';
+        document.getElementById("out").innerHTML = '<div class="card"><div class="err">שגיאה</div><pre style="color:#ffb4b4">'+escapeHtml(t)+'</pre></div>';
+      }
       return;
     }
-    const data = await res.json();
+
+    var data = await res.json();
     render(data);
     setStatus("בוצע ✅");
+
   } catch(e){
+    clearTimeout(timeoutTimer);
     hideLoader();
-    setStatus("שגיאת רשת/דפדפן", true);
+
+    // זיהוי timeout — AbortError נזרק כשה-controller מבצע abort
+    if (e.name === 'AbortError') {
+      setStatus("", false);
+      showTimeoutBanner();
+    } else {
+      setStatus("שגיאת רשת: " + (e.message || "בעיית חיבור"), true);
+    }
   }
 }
 
 // ─── Export ───────────────────────────────────────────────────
 function resultToMarkdown(r){
   if (!r) return '';
-  const lines = ['# Log Analysis Report\n'];
+  var lines = ['# Log Analysis Report\n'];
   lines.push('## עובדות מאושרות ✅');
   (r.confirmed_facts||[]).forEach(function(f){ lines.push('- ' + textFromMaybeObj(f)); });
   lines.push('\n## הכשל הראשי 🎯');
@@ -511,8 +571,8 @@ function resultToMarkdown(r){
 
 function exportMarkdown(){
   if (!lastResult) return;
-  const blob = new Blob([resultToMarkdown(lastResult)], {type:'text/markdown'});
-  const a = document.createElement('a');
+  var blob = new Blob([resultToMarkdown(lastResult)], {type:'text/markdown'});
+  var a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = 'log-analysis-' + Date.now() + '.md';
   a.click();
@@ -521,20 +581,20 @@ function exportMarkdown(){
 function exportPDF(){
   if (!lastResult) return;
   try {
-    const jsPDF = window.jspdf.jsPDF;
-    const doc = new jsPDF({ orientation:'p', unit:'mm', format:'a4' });
+    var jsPDF = window.jspdf.jsPDF;
+    var doc = new jsPDF({ orientation:'p', unit:'mm', format:'a4' });
     doc.setFont('helvetica','bold');
     doc.setFontSize(18);
     doc.setTextColor(0,180,220);
     doc.text('Log Analysis Report', 20, 22);
     doc.setFont('helvetica','normal');
     doc.setFontSize(9);
-    const lines = doc.splitTextToSize(resultToMarkdown(lastResult), 170);
-    let y = 34;
+    var lines = doc.splitTextToSize(resultToMarkdown(lastResult), 170);
+    var y = 34;
     lines.forEach(function(line){
       if (y > 280) { doc.addPage(); y = 20; }
-      const low = line.toLowerCase();
-      if (/error|fatal/.test(low)) doc.setTextColor(220,50,50);
+      var low = line.toLowerCase();
+      if (/error|fatal|timeout/.test(low)) doc.setTextColor(220,50,50);
       else if (/warn/.test(low)) doc.setTextColor(200,120,0);
       else if (/success|ok/.test(low)) doc.setTextColor(0,160,90);
       else if (/^#/.test(line.trim())) doc.setTextColor(0,180,220);
@@ -555,6 +615,7 @@ function clearAll(){
   document.getElementById("fileBadge").classList.remove('show');
   document.getElementById("out").innerHTML = "";
   document.getElementById("results-section").style.display = 'none';
+  document.getElementById("timeoutBanner").classList.remove('show');
   document.getElementById("summaryBadges").innerHTML = '';
   setStatus("");
   lastResult = null;
