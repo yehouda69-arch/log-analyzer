@@ -19,42 +19,37 @@ def _find_first_group(pattern: str, text: str, group: int = 1) -> Optional[str]:
 
 
 def _has_real_timeout(log_text: str) -> bool:
-    # Real timeout evidence only (not parameter names like 'millisecondsTimeout').
     return _contains(r"(timeoutexception|sockettimeoutexception|timed out|request timeout|\b408\b|\b504\b)", log_text)
 
 
 def _extract_exception_type(log_text: str) -> Optional[str]:
-    # Common .NET exception formats:
-    # "System.NullReferenceException: ..."
-    # "NullReferenceException: ..."
     return _find_first_group(r"(?:System\.)?([A-Za-z]+Exception)\b", log_text, 1)
 
 
+def _extract_request_exception_type(log_text: str) -> Optional[str]:
+    """Extract custom request exceptions like PatientNotFoundRequestException."""
+    return _find_first_group(r"([A-Za-z]+(?:NotFound|BadRequest|Unauthorized|Forbidden|Conflict|Request)[A-Za-z]*(?:Exception|Error)?)\b", log_text, 1)
+
+
 def _extract_method_hint(log_text: str) -> Optional[str]:
-    # Try to capture a failing method/hook name
-    # Example: "Failed to invoke hook method: GetOrders"
     hook = _find_first_group(r"hook method:\s*([A-Za-z0-9_]+)", log_text, 1)
     if hook:
         return hook
-
-    # Try to capture top stack frame like "at Namespace.Type.Method("
     frame = _find_first_group(r"\bat\s+[A-Za-z0-9_.]+\.(\w+)\s*\(", log_text, 1)
     return frame
 
 
 def _extract_top_frames(log_text: str, limit: int = 3) -> List[str]:
     frames = re.findall(r"\bat\s+([A-Za-z0-9_.]+\.\w+)\s*\(", log_text, flags=re.IGNORECASE)
-    out = []
-    for f in frames[:limit]:
-        out.append(f)
-    return out
+    return frames[:limit]
 
 
 def _severity_from_log(log_text: str) -> int:
-    # 3 = High (Sev1), 2 = Medium (Sev2), 1 = Low (Sev3)
     if _contains(r"\b503\b|\b502\b|\b500\b|outofmemory|no space left|sslhandshake|certificateexpired|too many connections|circuit breaker.*open", log_text):
         return 3
     if _contains(r"\b401\b|unauthorized|\b404\b|rate limit|\b429\b|failed to acquire connection", log_text) or _has_real_timeout(log_text) or _contains(r"(?:system\.)?(?:aggregateexception|nullreferenceexception)\b", log_text):
+        return 2
+    if _contains(r"NotFound|BadRequest|RequestException", log_text):
         return 2
     return 1
 
@@ -67,12 +62,14 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
     facts: List[str] = []
     contradictions: List[str] = []
 
-    # --- Extract key signals (best-effort) ---
     ex_type = _extract_exception_type(log_text)
+    req_ex_type = _extract_request_exception_type(log_text)
     method_hint = _extract_method_hint(log_text)
     top_frames = _extract_top_frames(log_text, limit=3)
 
-    # --- Facts (only if explicitly present) ---
+    # --- Facts ---
+    if req_ex_type and req_ex_type != ex_type:
+        facts.append(f"Log contains custom request exception: {req_ex_type}.")
     if ex_type:
         facts.append(f"Log contains exception: {ex_type}.")
     if _contains(r"object reference not set", log_text):
@@ -81,7 +78,6 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
         facts.append(f"Log indicates failing hook method: {method_hint}.")
     if top_frames:
         facts.append("Top stack frames: " + " → ".join(top_frames))
-
     if _contains(r"\b401\b|unauthorized", log_text):
         facts.append("Log contains an authentication failure (401/Unauthorized).")
     if _has_real_timeout(log_text):
@@ -108,16 +104,31 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
     if not facts:
         facts.append("No recognizable failure signature found in provided log snippet.")
 
-    # Simple contradiction example
     if _contains(r"active connections:\s*100/100", log_text) and _contains(r"active connections:\s*5/100", log_text):
         contradictions.append("Pool drops from 100/100 to 5/100 within the snippet; suggests transient stall/reset (not a persistent leak).")
 
     severity_score = _severity_from_log(log_text)
     severity_label = _severity_label(severity_score)
 
-    # --- Routing (prefer explicit exception evidence first) ---
-    # NullReference / AggregateException are common in .NET logs
-    if _contains(r"(?:system\.)?nullreferenceexception\b", log_text):
+    # --- Routing ---
+
+    # PatientNotFoundRequestException or similar custom NotFound/Request exceptions
+    if req_ex_type and _contains(r"NotFound|notfound", req_ex_type):
+        entity = re.sub(r"(NotFound|Request|Exception|Error)", "", req_ex_type, flags=re.IGNORECASE).strip() or "Entity"
+        primary_failure = f"{req_ex_type}: {entity} not found"
+        root_cause = f"A requested {entity} resource does not exist or could not be located (based on {req_ex_type} in log)."
+        hypotheses = [
+            Hypothesis(rank=1, description=f"{entity} ID missing or incorrect", justification=f"{req_ex_type} raised — resource lookup returned empty"),
+            Hypothesis(rank=2, description=f"{entity} was deleted or never created", justification="Not-found exceptions can indicate data consistency issues"),
+            Hypothesis(rank=3, description="Wrong environment/tenant routing", justification="Request may be reaching wrong DB or service instance"),
+        ]
+        next_steps = [
+            NextStep(text=f"Verify the {entity} ID in the request exists in the database.", urgency="high"),
+            NextStep(text=f"Check if {entity} was recently deleted, archived, or belongs to a different tenant/environment.", urgency="high"),
+            NextStep(text="Add explicit not-found handling and return a clear 404 with resource details to aid debugging.", urgency="medium"),
+        ]
+
+    elif _contains(r"(?:system\.)?nullreferenceexception\b", log_text):
         primary_failure = "NullReferenceException"
         root_cause = "NullReferenceException present in log (object reference not set)."
         hypotheses = [
@@ -156,9 +167,7 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
     elif _contains(r"no space left on device", log_text):
         primary_failure = "Write failed due to disk full"
         root_cause = "No space left on device"
-        hypotheses = [
-            Hypothesis(rank=1, description="Disk exhausted on host/container", justification="'No space left on device' present in log"),
-        ]
+        hypotheses = [Hypothesis(rank=1, description="Disk exhausted on host/container", justification="'No space left on device' present in log")]
         next_steps = [
             NextStep(text="Free disk space (rotate/delete old logs, clear temp/cache) and re-run failing operation.", urgency="high"),
             NextStep(text="Add disk usage alerting and log retention policy.", urgency="medium"),
@@ -241,9 +250,7 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
     else:
         primary_failure = "Unknown"
         root_cause = "Insufficient evidence in provided snippet to determine root cause"
-        hypotheses = [
-            Hypothesis(rank=1, description="Need more context", justification="No clear signature in snippet")
-        ]
+        hypotheses = [Hypothesis(rank=1, description="Need more context", justification="No clear signature in snippet")]
         next_steps = [
             NextStep(text="Provide a wider time window (±2 minutes) around the failure.", urgency="medium"),
             NextStep(text="Include stack trace / error codes if available.", urgency="low"),
