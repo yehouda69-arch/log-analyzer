@@ -1,4 +1,0 @@
-2026-03-06 12:41:02 INFO  Calling http://inventory.service.local/health
-2026-03-06 12:41:02 ERROR UnknownHostException: inventory.service.local
-2026-03-06 12:41:03 WARN  Retry 1/3
-2026-03-06 12:41:05 ERROR Returning 503
