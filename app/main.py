@@ -29,7 +29,6 @@ HTML = r"""
     *{box-sizing:border-box}
     body{margin:0;font-family:system-ui,Segoe UI,Arial;background:linear-gradient(180deg,#070b14,#0b1220);color:var(--text);min-height:100vh}
 
-    /* Grid overlay */
     body::before{
       content:'';position:fixed;inset:0;
       background-image:linear-gradient(rgba(0,212,255,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(0,212,255,.03) 1px,transparent 1px);
@@ -40,14 +39,39 @@ HTML = r"""
 
     /* Header */
     header{text-align:center;margin-bottom:36px}
-    h1{margin:0 0 6px;font-size:2.6rem;font-weight:900;
+
+    .logo-wrap{display:inline-flex;align-items:center;gap:14px;margin-bottom:8px}
+
+    h1{
+      margin:0;font-size:2.6rem;font-weight:900;
       background:linear-gradient(135deg,var(--accent),var(--accent2));
       -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
-      letter-spacing:-1px}
-    .sub{color:var(--muted);margin-bottom:0;font-size:.95rem}
+      letter-spacing:-1px
+    }
 
-    .grid{display:grid;grid-template-columns:1fr;gap:14px}
-    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    /* Magnifying glass */
+    .mag{position:relative;width:58px;height:58px;flex-shrink:0}
+
+    .mag-circle{
+      position:absolute;top:0;left:0;
+      width:44px;height:44px;border-radius:50%;
+      border:3.5px solid var(--accent);
+      box-shadow:0 0 16px rgba(0,212,255,.5),inset 0 0 10px rgba(0,212,255,.08);
+      overflow:hidden;background:#050d1a;z-index:2
+    }
+
+    #matrixCanvas{width:100%;height:100%;display:block;border-radius:50%}
+
+    .mag-handle{
+      position:absolute;bottom:2px;right:2px;
+      width:22px;height:5px;
+      background:linear-gradient(90deg,var(--accent),var(--accent2));
+      border-radius:3px;
+      transform:rotate(45deg);transform-origin:left center;
+      box-shadow:0 0 8px rgba(0,212,255,.4);z-index:1
+    }
+
+    .sub{color:var(--muted);font-size:.95rem}
 
     /* Card */
     .card{background:rgba(15,26,46,.85);border:1px solid var(--border);border-radius:18px;padding:16px;backdrop-filter:blur(4px)}
@@ -58,7 +82,7 @@ HTML = r"""
       text-align:center;cursor:pointer;transition:all .3s;position:relative;
       background:rgba(0,212,255,.02);margin-bottom:4px
     }
-    .drop-zone:hover,.drop-zone.dragover{border-color:var(--accent);background:rgba(0,212,255,.07);box-shadow:inset 0 0 30px rgba(0,212,255,.05)}
+    .drop-zone:hover,.drop-zone.dragover{border-color:var(--accent);background:rgba(0,212,255,.07)}
     .drop-zone.dragover{transform:scale(1.01)}
     .drop-zone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
     .drop-icon{font-size:1.8rem;margin-bottom:6px}
@@ -88,6 +112,7 @@ HTML = r"""
     textarea::placeholder{color:var(--muted)}
 
     /* Buttons */
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
     .btn{border:0;border-radius:14px;padding:10px 18px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-size:.88rem;transition:all .2s}
     .btn-primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;box-shadow:0 4px 18px rgba(0,212,255,.25)}
     .btn-primary:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 6px 28px rgba(0,212,255,.4)}
@@ -120,12 +145,10 @@ HTML = r"""
     .badge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:.75rem;font-family:monospace;font-weight:700}
     .badge-error{background:rgba(239,68,68,.1);color:var(--red);border:1px solid rgba(239,68,68,.2)}
     .badge-warn{background:rgba(245,158,11,.1);color:var(--orange);border:1px solid rgba(245,158,11,.2)}
-    .badge-info{background:rgba(0,212,255,.08);color:var(--accent);border:1px solid rgba(0,212,255,.15)}
     .badge-ok{background:rgba(34,197,94,.08);color:var(--green);border:1px solid rgba(34,197,94,.15)}
 
     /* Result cards */
-    .pill{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;border:1px solid var(--border);color:var(--muted)}
-    .k{font-size:13px;color:var(--muted);margin-bottom:8px}
+    .grid{display:grid;grid-template-columns:1fr;gap:14px}
     .title-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
     .tag{font-weight:900;padding:6px 10px;border-radius:999px;color:#0b1220}
     .tag.green{background:var(--green)}.tag.orange{background:var(--orange)}.tag.red{background:var(--red)}
@@ -135,7 +158,7 @@ HTML = r"""
     .err{color:var(--red);font-weight:800}
     pre{white-space:pre-wrap;word-break:break-word;margin:0}
 
-    /* Syntax highlight classes */
+    /* Syntax highlight */
     .hl-error{color:var(--red);font-weight:700}
     .hl-warn{color:var(--orange);font-weight:600}
     .hl-ok{color:var(--green)}
@@ -145,7 +168,6 @@ HTML = r"""
     .hl-ip{color:#b39ddb}
     .hl-num{color:#ffd740}
     .hl-path{color:#80cbc4}
-    .hl-key{color:var(--accent2);font-weight:600}
     .section-hdr{
       display:block;margin:14px 0 6px;padding:5px 10px;
       background:rgba(0,212,255,.08);border-right:3px solid var(--accent);
@@ -153,7 +175,6 @@ HTML = r"""
       font-size:.82rem;text-transform:uppercase;letter-spacing:.5px
     }
 
-    /* Result slide-in */
     #results-section{animation:slideIn .4s ease}
     @keyframes slideIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
 
@@ -165,14 +186,21 @@ HTML = r"""
 
   <!-- Header -->
   <header>
-    <h1>🔍 Log Analyzer</h1>
+    <div class="logo-wrap">
+      <h1>Log Analyzer</h1>
+      <div class="mag">
+        <div class="mag-circle">
+          <canvas id="matrixCanvas"></canvas>
+        </div>
+        <div class="mag-handle"></div>
+      </div>
+    </div>
     <div class="sub">גרור קובץ לוג או הדבק טקסט — קבל ניתוח מלא תוך שניות</div>
   </header>
 
   <!-- Input Card -->
   <div class="card">
 
-    <!-- Drag & Drop -->
     <div class="drop-zone" id="dropZone">
       <input type="file" id="file" accept=".log,.txt,.json,.csv">
       <div class="drop-icon">📂</div>
@@ -180,7 +208,6 @@ HTML = r"""
       <div class="drop-label" style="font-size:.73rem;margin-top:3px;opacity:.7">.log · .txt · .json · .csv</div>
     </div>
 
-    <!-- File badge -->
     <div class="file-badge" id="fileBadge">
       <span>📄</span>
       <span id="fileName"></span>
@@ -190,7 +217,7 @@ HTML = r"""
 
     <div class="divider">או הדבק טקסט</div>
 
-    <textarea id="log" placeholder="[2024-01-15 10:23:45] ERROR: Connection refused&#10;[2024-01-15 10:23:46] WARN: Retry attempt 1/3&#10;..."></textarea>
+    <textarea id="log" placeholder="הדבק כאן את הלוג..."></textarea>
 
     <div style="height:12px"></div>
     <div class="row">
@@ -206,23 +233,58 @@ HTML = r"""
     <div class="loader-text" id="loaderText">מנתח לוגים...</div>
   </div>
 
-  <!-- Results Section -->
+  <!-- Results -->
   <div id="results-section" style="display:none">
-
-    <!-- Toolbar with export buttons -->
     <div class="results-bar">
       <div class="results-title"><span class="dot"></span>תוצאות ניתוח</div>
       <div id="summaryBadges"></div>
-      <button class="btn btn-export" onclick="exportMarkdown()" title="ייצא כ-Markdown">📝 Markdown</button>
-      <button class="btn btn-export" onclick="exportPDF()" title="ייצא כ-PDF">📄 PDF</button>
+      <button class="btn btn-export" onclick="exportMarkdown()">📝 Markdown</button>
+      <button class="btn btn-export" onclick="exportPDF()">📄 PDF</button>
     </div>
-
     <div id="out" class="grid"></div>
   </div>
 
 </div>
 
 <script>
+// ─── Matrix Animation ─────────────────────────────────────────
+(function(){
+  const canvas = document.getElementById('matrixCanvas');
+  const ctx = canvas.getContext('2d');
+  const SIZE = 88;
+  canvas.width = SIZE;
+  canvas.height = SIZE;
+
+  const chars = '01エラーERROR警WARN0xFF48454C50ABDE';
+  const fontSize = 7;
+  const cols = Math.floor(SIZE / fontSize);
+  const drops = Array(cols).fill(0).map(() => Math.random() * -15);
+  const colors = ['#00d4ff','#00ffcc','#7c4dff','#b39ddb','#00e5ff'];
+
+  function drawMatrix() {
+    ctx.fillStyle = 'rgba(5,13,26,0.18)';
+    ctx.fillRect(0, 0, SIZE, SIZE);
+    ctx.font = 'bold ' + fontSize + 'px monospace';
+    for (let i = 0; i < drops.length; i++) {
+      const char = chars[Math.floor(Math.random() * chars.length)];
+      const x = i * fontSize;
+      const y = drops[i] * fontSize;
+      if (Math.random() > 0.88) {
+        ctx.fillStyle = '#ffffff';
+        ctx.shadowColor = '#00d4ff';
+        ctx.shadowBlur = 6;
+      } else {
+        ctx.fillStyle = colors[Math.floor(Math.random() * colors.length)];
+        ctx.shadowBlur = 0;
+      }
+      ctx.fillText(char, x, y);
+      if (y > SIZE && Math.random() > 0.975) drops[i] = 0;
+      drops[i] += 0.35 + Math.random() * 0.3;
+    }
+  }
+  setInterval(drawMatrix, 40);
+})();
+
 // ─── State ────────────────────────────────────────────────────
 let lastResult = null;
 
@@ -308,10 +370,8 @@ function severityTagFromSteps(nextSteps){
 function highlightText(text){
   return text.split('\n').map(line => {
     if (!line.trim()) return '';
-    // Section headers
     if (/^#{1,3}\s/.test(line))
-      return `<span class="section-hdr">${escapeHtml(line.replace(/^#{1,3}\s/,''))}</span>`;
-
+      return '<span class="section-hdr">'+escapeHtml(line.replace(/^#{1,3}\s/,''))+'</span>';
     const low = line.toLowerCase();
     let cls = '';
     if (/\b(error|fatal|exception|critical)\b/.test(low)) cls = 'hl-error';
@@ -319,85 +379,66 @@ function highlightText(text){
     else if (/\b(success|ok|passed|done)\b/.test(low)) cls = 'hl-ok';
     else if (/\binfo\b/.test(low)) cls = 'hl-info';
     else if (/\bdebug\b/.test(low)) cls = 'hl-debug';
-
     let out = escapeHtml(line);
-    out = out.replace(/(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2})/g, m => `<span class="hl-ts">${m}</span>`);
-    out = out.replace(/\b(\d{1,3}\.){3}\d{1,3}\b/g, m => `<span class="hl-ip">${m}</span>`);
-    out = out.replace(/(\/[\w.\-_/]+)/g, m => `<span class="hl-path">${m}</span>`);
-    out = out.replace(/\b(\d+)(ms|s|KB|MB|GB|%)?\b/g, (m,n,u) => `<span class="hl-num">${n}${u||''}</span>`);
-
-    return cls ? `<span class="${cls}">${out}</span>` : out;
+    out = out.replace(/(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2})/g, function(m){ return '<span class="hl-ts">'+m+'</span>'; });
+    out = out.replace(/\b(\d{1,3}\.){3}\d{1,3}\b/g, function(m){ return '<span class="hl-ip">'+m+'</span>'; });
+    out = out.replace(/(\/[\w.\-_/]+)/g, function(m){ return '<span class="hl-path">'+m+'</span>'; });
+    out = out.replace(/\b(\d+)(ms|s|KB|MB|GB|%)?\b/g, function(m,n,u){ return '<span class="hl-num">'+n+(u||'')+'</span>'; });
+    return cls ? '<span class="'+cls+'">'+out+'</span>' : out;
   }).join('\n');
 }
 
-// ─── Summary badges ───────────────────────────────────────────
+// ─── Summary Badges ───────────────────────────────────────────
 function buildSummaryBadges(result){
   const text = JSON.stringify(result).toLowerCase();
-  const count = (patterns) => patterns.reduce((a,p) => a+(text.match(p)||[]).length, 0);
+  const count = function(patterns){ return patterns.reduce(function(a,p){ return a+(text.match(p)||[]).length; }, 0); };
   const errors = count([/error/g,/fatal/g,/exception/g]);
   const warns  = count([/warn/g]);
   const ok     = count([/success/g]);
   let html = '';
-  if (errors) html += `<span class="badge badge-error">🔴 ${errors} שגיאות</span> `;
-  if (warns)  html += `<span class="badge badge-warn">🟠 ${warns} אזהרות</span> `;
-  if (ok)     html += `<span class="badge badge-ok">🟢 ${ok} הצלחות</span>`;
+  if (errors) html += '<span class="badge badge-error">🔴 '+errors+' שגיאות</span> ';
+  if (warns)  html += '<span class="badge badge-warn">🟠 '+warns+' אזהרות</span> ';
+  if (ok)     html += '<span class="badge badge-ok">🟢 '+ok+' הצלחות</span>';
   document.getElementById('summaryBadges').innerHTML = html;
 }
 
 // ─── Render ───────────────────────────────────────────────────
 function card(title, contentHtml, tag){
-  const [label, color] = tag || ["לא דחוף","green"];
-  return `
-    <div class="card">
-      <div class="title-row">
-        <div style="font-size:18px;font-weight:900">${title}</div>
-        <span class="tag ${color}">${label}</span>
-      </div>
-      <div style="height:10px"></div>
-      ${contentHtml}
-    </div>
-  `;
+  const label = tag[0], color = tag[1];
+  return '<div class="card"><div class="title-row"><div style="font-size:18px;font-weight:900">'+title+'</div><span class="tag '+color+'">'+label+'</span></div><div style="height:10px"></div>'+contentHtml+'</div>';
 }
 
 function list(items){
   if (!items || !items.length) return '<div class="muted">—</div>';
-  const html = items.map(x => {
+  const html = items.map(function(x){
     if (x && typeof x === "object" && x.text != null){
-      const u = x.urgency ? ` <span class="muted">(${escapeHtml(x.urgency)})</span>` : "";
-      return `<li>${escapeHtml(x.text)}${u}</li>`;
+      const u = x.urgency ? ' <span class="muted">('+escapeHtml(x.urgency)+')</span>' : "";
+      return '<li>'+escapeHtml(x.text)+u+'</li>';
     }
-    return `<li>${escapeHtml(textFromMaybeObj(x))}</li>`;
+    return '<li>'+escapeHtml(textFromMaybeObj(x))+'</li>';
   }).join("");
-  return `<ul>${html}</ul>`;
+  return '<ul>'+html+'</ul>';
 }
 
 function render(result){
   lastResult = result;
   const out = document.getElementById("out");
   out.innerHTML = "";
-
   buildSummaryBadges(result);
-
   const nextStepsTag = severityTagFromSteps(result.next_steps);
 
-  // Confirmed facts with syntax highlighting
   const factsHtml = (result.confirmed_facts||[]).length
-    ? `<pre style="font-family:monospace;font-size:.82rem;line-height:1.8">${highlightText((result.confirmed_facts||[]).map(textFromMaybeObj).join('\n'))}</pre>`
+    ? '<pre style="font-family:monospace;font-size:.82rem;line-height:1.8">'+highlightText((result.confirmed_facts||[]).map(textFromMaybeObj).join('\n'))+'</pre>'
     : '<div class="muted">—</div>';
   out.innerHTML += card("עובדות מאושרות ✅", factsHtml, ["לא דחוף","green"]);
-
-  const primaryHtml = `<pre style="font-family:monospace;font-size:.85rem;line-height:1.7">${highlightText(result.primary_failure||"—")}</pre>`;
-  out.innerHTML += card("הכשל הראשי 🎯", primaryHtml, ["בינוני","orange"]);
-
-  const rcHtml = `<pre style="font-family:monospace;font-size:.85rem;line-height:1.7">${highlightText(result.root_cause||"—")}</pre>`;
-  out.innerHTML += card("Root Cause 🧠", rcHtml, ["בינוני","orange"]);
+  out.innerHTML += card("הכשל הראשי 🎯", '<pre style="font-family:monospace;font-size:.85rem;line-height:1.7">'+highlightText(result.primary_failure||"—")+'</pre>', ["בינוני","orange"]);
+  out.innerHTML += card("Root Cause 🧠", '<pre style="font-family:monospace;font-size:.85rem;line-height:1.7">'+highlightText(result.root_cause||"—")+'</pre>', ["בינוני","orange"]);
 
   const hyp = result.hypotheses_ranked || [];
   const hypHtml = hyp.length
-    ? `<ul>${hyp.map(h => `<li><b>#${h.rank}</b> ${escapeHtml(h.description)} <span class="muted">— ${escapeHtml(h.justification||"")}</span></li>`).join("")}</ul>`
-    : `<div class="muted">—</div>`;
+    ? '<ul>'+hyp.map(function(h){ return '<li><b>#'+h.rank+'</b> '+escapeHtml(h.description)+' <span class="muted">— '+escapeHtml(h.justification||"")+'</span></li>'; }).join("")+'</ul>'
+    : '<div class="muted">—</div>';
   out.innerHTML += card("השערות מדורגות 📌", hypHtml, ["בינוני","orange"]);
-
   out.innerHTML += card("NEXT STEPS ➜", list(result.next_steps), nextStepsTag);
 
   const conTag = (result.contradictions&&result.contradictions.length) ? ["דחוף","red"] : ["לא דחוף","green"];
@@ -407,7 +448,7 @@ function render(result){
 }
 
 // ─── Analyze ──────────────────────────────────────────────────
-function setStatus(msg, isErr=false){
+function setStatus(msg, isErr){
   const el = document.getElementById("status");
   el.className = isErr ? "err" : "muted";
   el.textContent = msg || "";
@@ -416,10 +457,8 @@ function setStatus(msg, isErr=false){
 async function analyze(){
   setStatus("מנתח…");
   showLoader();
-
-  const file = document.getElementById("file").files?.[0];
-  const logText = document.getElementById("log").value?.trim();
-
+  const file = document.getElementById("file").files && document.getElementById("file").files[0];
+  const logText = document.getElementById("log").value && document.getElementById("log").value.trim();
   try{
     let res;
     if(file){
@@ -434,18 +473,14 @@ async function analyze(){
         body: JSON.stringify({ log: logText })
       });
     }
-
     hideLoader();
-
     if(!res.ok){
       const t = await res.text();
       setStatus("שגיאה מהשרת: " + res.status, true);
       document.getElementById('results-section').style.display = 'block';
-      document.getElementById("out").innerHTML =
-        `<div class="card"><div class="err">שגיאה</div><pre style="color:#ffb4b4">${escapeHtml(t)}</pre></div>`;
+      document.getElementById("out").innerHTML = '<div class="card"><div class="err">שגיאה</div><pre style="color:#ffb4b4">'+escapeHtml(t)+'</pre></div>';
       return;
     }
-
     const data = await res.json();
     render(data);
     setStatus("בוצע ✅");
@@ -459,32 +494,24 @@ async function analyze(){
 function resultToMarkdown(r){
   if (!r) return '';
   const lines = ['# Log Analysis Report\n'];
-
   lines.push('## עובדות מאושרות ✅');
-  (r.confirmed_facts||[]).forEach(f => lines.push('- ' + textFromMaybeObj(f)));
-
+  (r.confirmed_facts||[]).forEach(function(f){ lines.push('- ' + textFromMaybeObj(f)); });
   lines.push('\n## הכשל הראשי 🎯');
   lines.push(r.primary_failure || '—');
-
   lines.push('\n## Root Cause 🧠');
   lines.push(r.root_cause || '—');
-
   lines.push('\n## השערות מדורגות 📌');
-  (r.hypotheses_ranked||[]).forEach(h => lines.push(`${h.rank}. ${h.description} — ${h.justification||''}`));
-
+  (r.hypotheses_ranked||[]).forEach(function(h){ lines.push(h.rank+'. '+h.description+' — '+(h.justification||'')); });
   lines.push('\n## NEXT STEPS ➜');
-  (r.next_steps||[]).forEach(s => lines.push('- ' + textFromMaybeObj(s)));
-
+  (r.next_steps||[]).forEach(function(s){ lines.push('- ' + textFromMaybeObj(s)); });
   lines.push('\n## סתירות 🧩');
-  (r.contradictions||[]).forEach(c => lines.push('- ' + textFromMaybeObj(c)));
-
+  (r.contradictions||[]).forEach(function(c){ lines.push('- ' + textFromMaybeObj(c)); });
   return lines.join('\n');
 }
 
 function exportMarkdown(){
   if (!lastResult) return;
-  const md = resultToMarkdown(lastResult);
-  const blob = new Blob([md], {type:'text/markdown'});
+  const blob = new Blob([resultToMarkdown(lastResult)], {type:'text/markdown'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = 'log-analysis-' + Date.now() + '.md';
@@ -494,21 +521,17 @@ function exportMarkdown(){
 function exportPDF(){
   if (!lastResult) return;
   try {
-    const { jsPDF } = window.jspdf;
+    const jsPDF = window.jspdf.jsPDF;
     const doc = new jsPDF({ orientation:'p', unit:'mm', format:'a4' });
-
     doc.setFont('helvetica','bold');
     doc.setFontSize(18);
     doc.setTextColor(0,180,220);
     doc.text('Log Analysis Report', 20, 22);
-
     doc.setFont('helvetica','normal');
     doc.setFontSize(9);
-
-    const md = resultToMarkdown(lastResult);
-    const lines = doc.splitTextToSize(md, 170);
+    const lines = doc.splitTextToSize(resultToMarkdown(lastResult), 170);
     let y = 34;
-    lines.forEach(line => {
+    lines.forEach(function(line){
       if (y > 280) { doc.addPage(); y = 20; }
       const low = line.toLowerCase();
       if (/error|fatal/.test(low)) doc.setTextColor(220,50,50);
@@ -519,7 +542,6 @@ function exportPDF(){
       doc.text(line, 20, y);
       y += 5;
     });
-
     doc.save('log-analysis-' + Date.now() + '.pdf');
   } catch(e) {
     alert('שגיאה ביצירת PDF. נסה ייצוא Markdown.');
