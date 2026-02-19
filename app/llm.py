@@ -6,11 +6,18 @@ def _contains(pattern: str, text: str) -> bool:
     return re.search(pattern, text, re.IGNORECASE) is not None
 
 
+def _has_real_timeout(log_text: str) -> bool:
+    """
+    Real timeout evidence only (not parameter names like 'millisecondsTimeout').
+    """
+    return _contains(r"(timeoutexception|sockettimeoutexception|timed out|request timeout|\b408\b|\b504\b)", log_text)
+
+
 def _severity_from_log(log_text: str) -> int:
     # 3 = High (Sev1), 2 = Medium (Sev2), 1 = Low (Sev3)
     if _contains(r"\b503\b|\b502\b|\b500\b|outofmemory|no space left|sslhandshake|certificateexpired|too many connections|circuit breaker.*open", log_text):
         return 3
-    if _contains(r"\b401\b|unauthorized|\b404\b|rate limit|\b429\b|timeout|failed to acquire connection", log_text):
+    if _contains(r"\b401\b|unauthorized|\b404\b|rate limit|\b429\b|failed to acquire connection", log_text) or _has_real_timeout(log_text):
         return 2
     return 1
 
@@ -23,10 +30,11 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
     facts = []
     contradictions = []
 
+    # Facts (strict)
     if _contains(r"\b401\b|unauthorized", log_text):
         facts.append("Log contains an authentication failure (401/Unauthorized).")
-    if _contains(r"timeout", log_text):
-        facts.append("Log contains a timeout event.")
+    if _has_real_timeout(log_text):
+        facts.append("Log contains an explicit timeout event.")
     if _contains(r"active connections:\s*\d+/\d+", log_text):
         facts.append("Log includes connection pool utilization metrics.")
     if _contains(r"failed to acquire connection|connection from pool|waiting for connection", log_text):
@@ -55,8 +63,21 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
     severity_score = _severity_from_log(log_text)
     severity_label = _severity_label(severity_score)
 
+    # NEW: Prefer explicit exceptions over keyword routing
+    if _contains(r"nullreferenceexception", log_text):
+        primary_failure = "NullReferenceException"
+        root_cause = "NullReferenceException present in log (object reference not set)."
+        hypotheses = [
+            Hypothesis(rank=1, description="Null object dereference in application code", justification="NullReferenceException present in log"),
+            Hypothesis(rank=2, description="Unexpected/invalid input leading to null values", justification="NullReferenceException commonly triggered by missing fields"),
+        ]
+        next_steps = [
+            NextStep(text="Find the first NullReferenceException stack trace frame and identify which variable was null.", urgency="high"),
+            NextStep(text="Add input validation/guards around the failing code path and log key identifiers (IDs) for reproducibility.", urgency="medium"),
+        ]
+
     # Conservative, evidence-driven routing
-    if _contains(r"\b401\b|unauthorized", log_text):
+    elif _contains(r"\b401\b|unauthorized", log_text):
         primary_failure = "Downstream service rejected request (401 Unauthorized)"
         root_cause = "Missing/invalid Authorization for downstream call (based on 401 evidence in log)"
         hypotheses = [
@@ -131,8 +152,8 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
         primary_failure = "Connection pool exhaustion"
         root_cause = "No available DB connections in pool (pool saturation / acquire failure)"
         hypotheses = [
-            Hypothesis(rank=1, description="Transient DB stall or blocking event holding connections", justification="Pool saturation + timeouts"),
-            Hypothesis(rank=2, description="DB server max_connections reached", justification="'too many connections' appears in log"),
+            Hypothesis(rank=1, description="Transient DB stall or blocking event holding connections", justification="Pool saturation evidence in log"),
+            Hypothesis(rank=2, description="DB server max_connections reached", justification="'too many connections' may appear in log"),
             Hypothesis(rank=3, description="Long-running transactions or leak", justification="Pool saturation can be caused by unreleased connections"),
         ]
         next_steps = [
@@ -141,12 +162,12 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
             NextStep(text="Enable pool long-hold/leak detection and log slow queries.", urgency="medium"),
         ]
 
-    elif _contains(r"timeout", log_text):
+    elif _has_real_timeout(log_text):
         primary_failure = "Timeout"
-        root_cause = "Operation exceeded configured timeout (evidenced by 'timeout' in log)"
+        root_cause = "Operation timed out (explicit timeout evidence present in log)"
         hypotheses = [
-            Hypothesis(rank=1, description="DB latency / slow query", justification="Timeout present"),
-            Hypothesis(rank=2, description="Network stall", justification="Timeout can be caused by intermittent connectivity"),
+            Hypothesis(rank=1, description="DB latency / slow query", justification="Explicit timeout evidence present"),
+            Hypothesis(rank=2, description="Network stall", justification="Explicit timeout evidence present"),
         ]
         next_steps = [
             NextStep(text="Identify which operation timed out (acquire vs query vs HTTP) using scoped timing logs.", urgency="high"),
