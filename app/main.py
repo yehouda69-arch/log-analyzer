@@ -167,12 +167,12 @@ HTML = r"""
     /* result cards */
     .rcard{border:1px solid var(--border);background:var(--panel);padding:14px 16px}
     .rcard-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
-    .rcard-title{font-family:'Orbitron',monospace;font-size:.75rem;letter-spacing:2px;color:var(--text)}
+    .rcard-title{font-family:'Orbitron',monospace;font-size:.88rem;letter-spacing:2px;color:var(--text)}
     .rtag{font-family:'Share Tech Mono',monospace;font-size:.6rem;letter-spacing:2px;padding:4px 10px;border-radius:1px;color:#000;font-weight:700}
     .rtag-g{background:var(--g)}.rtag-o{background:var(--orange)}.rtag-r{background:var(--red)}
-    pre{white-space:pre-wrap;word-break:break-word;font-family:'Share Tech Mono',monospace;font-size:.72rem;line-height:1.8;color:var(--text)}
+    pre{white-space:pre-wrap;word-break:break-word;font-family:'Share Tech Mono',monospace;font-size:.88rem;line-height:1.9;color:var(--text)}
     ul{padding-inline-start:16px}
-    li{margin:5px 0;font-family:'Share Tech Mono',monospace;font-size:.7rem;line-height:1.6}
+    li{margin:6px 0;font-family:'Share Tech Mono',monospace;font-size:.86rem;line-height:1.7}
     .muted{color:var(--muted)}
 
     /* highlight */
