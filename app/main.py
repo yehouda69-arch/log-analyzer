@@ -29,8 +29,6 @@ HTML = r"""
     body{margin:0;font-family:system-ui,Segoe UI,Arial;background:linear-gradient(180deg,#070b14,#0b1220);color:var(--text);min-height:100vh}
     body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(0,212,255,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(0,212,255,.03) 1px,transparent 1px);background-size:40px 40px;pointer-events:none;z-index:0}
     .wrap{max-width:920px;margin:0 auto;padding:28px;position:relative;z-index:1}
-
-    /* Header */
     header{text-align:center;margin-bottom:36px}
     .logo-wrap{display:inline-flex;align-items:center;gap:14px;margin-bottom:8px}
     h1{margin:0;font-size:2.6rem;font-weight:900;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;letter-spacing:-1px}
@@ -39,31 +37,17 @@ HTML = r"""
     #matrixCanvas{width:100%;height:100%;display:block;border-radius:50%}
     .mag-handle{position:absolute;bottom:2px;right:2px;width:22px;height:5px;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:3px;transform:rotate(45deg);transform-origin:left center;box-shadow:0 0 8px rgba(0,212,255,.4);z-index:1}
     .sub{color:var(--muted);font-size:.95rem}
-
-    /* Card */
     .card{background:rgba(15,26,46,.85);border:1px solid var(--border);border-radius:18px;padding:16px;backdrop-filter:blur(4px)}
-
-    /* Severity Card */
-    .severity-card{
-      display:flex;align-items:center;gap:16px;
-      padding:16px 20px;border-radius:18px;margin-bottom:14px;
-      border:1px solid var(--border);
-      background:rgba(15,26,46,.85);
-    }
+    .severity-card{display:flex;align-items:center;gap:16px;padding:16px 20px;border-radius:18px;margin-bottom:14px;border:1px solid var(--border);background:rgba(15,26,46,.85);}
     .sev-icon{font-size:2rem}
     .sev-label{font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:4px}
     .sev-value{font-size:1.5rem;font-weight:900}
     .sev-bar-wrap{flex:1;height:8px;background:rgba(255,255,255,.08);border-radius:99px;overflow:hidden;margin-top:6px}
     .sev-bar{height:100%;border-radius:99px;transition:width .6s ease}
-    .sev-low .sev-value{color:var(--green)}
-    .sev-low .sev-bar{background:var(--green);width:33%}
-    .sev-medium .sev-value{color:var(--orange)}
-    .sev-medium .sev-bar{background:var(--orange);width:66%}
-    .sev-high .sev-value{color:var(--red)}
-    .sev-high .sev-bar{background:var(--red);width:100%;animation:pulse-bar 1.2s ease-in-out infinite}
+    .sev-low .sev-value{color:var(--green)}.sev-low .sev-bar{background:var(--green);width:33%}
+    .sev-medium .sev-value{color:var(--orange)}.sev-medium .sev-bar{background:var(--orange);width:66%}
+    .sev-high .sev-value{color:var(--red)}.sev-high .sev-bar{background:var(--red);width:100%;animation:pulse-bar 1.2s ease-in-out infinite}
     @keyframes pulse-bar{0%,100%{opacity:.7}50%{opacity:1}}
-
-    /* Drop Zone */
     .drop-zone{border:2px dashed var(--border);border-radius:12px;padding:26px;text-align:center;cursor:pointer;transition:all .3s;position:relative;background:rgba(0,212,255,.02);margin-bottom:4px}
     .drop-zone:hover,.drop-zone.dragover{border-color:var(--accent);background:rgba(0,212,255,.07)}
     .drop-zone.dragover{transform:scale(1.01)}
@@ -71,20 +55,13 @@ HTML = r"""
     .drop-icon{font-size:1.8rem;margin-bottom:6px}
     .drop-label{color:var(--muted);font-size:.88rem}
     .drop-label strong{color:var(--accent)}
-
-    /* File badge */
     .file-badge{display:none;align-items:center;gap:8px;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2);border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:.82rem;color:var(--green);font-family:monospace}
     .file-badge.show{display:flex}
     .file-badge button{margin-right:auto;background:none;border:none;color:var(--red);cursor:pointer;font-size:1rem;padding:0 4px}
-
-    /* Divider */
     .divider{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:.8rem;margin:10px 0}
     .divider::before,.divider::after{content:'';flex:1;height:1px;background:var(--border)}
-
     textarea{width:100%;min-height:200px;border:1px solid var(--border);background:#071023;color:var(--text);border-radius:14px;padding:14px;resize:vertical;outline:none;font-family:monospace;font-size:.82rem;line-height:1.7;direction:ltr}
     textarea::placeholder{color:var(--muted)}
-
-    /* Buttons */
     .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
     .btn{border:0;border-radius:14px;padding:10px 18px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-size:.88rem;transition:all .2s}
     .btn-primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;box-shadow:0 4px 18px rgba(0,212,255,.25)}
@@ -92,12 +69,8 @@ HTML = r"""
     .btn-primary:disabled{opacity:.5;cursor:not-allowed;transform:none}
     .btn-ghost{background:transparent;color:var(--text);border:1px solid var(--border)}
     .btn-ghost:hover{border-color:var(--muted)}
-    .btn-example{background:rgba(0,212,255,.08);color:var(--accent);border:1px solid rgba(0,212,255,.2);font-size:.8rem;padding:7px 12px}
-    .btn-example:hover{background:rgba(0,212,255,.15)}
     .btn-export{background:rgba(124,77,255,.12);color:#b39ddb;border:1px solid rgba(124,77,255,.25)}
     .btn-export:hover{background:rgba(124,77,255,.22)}
-
-    /* Loader */
     .loader{display:none;flex-direction:column;align-items:center;gap:16px;padding:50px 20px}
     .loader.active{display:flex}
     .spinner{width:48px;height:48px;position:relative}
@@ -106,8 +79,6 @@ HTML = r"""
     @keyframes spin{to{transform:rotate(360deg)}}
     .loader-text{color:var(--muted);font-size:.85rem;font-family:monospace;animation:pulse 1.4s ease-in-out infinite}
     @keyframes pulse{0%,100%{opacity:.3}50%{opacity:1}}
-
-    /* Timeout Banner */
     .timeout-banner{display:none;align-items:center;gap:12px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.3);border-radius:12px;padding:14px 18px;margin-top:14px}
     .timeout-banner.show{display:flex}
     .timeout-body{flex:1}
@@ -117,19 +88,13 @@ HTML = r"""
     .timeout-tips li{margin:3px 0}
     .btn-retry{background:rgba(245,158,11,.15);color:var(--orange);border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:7px 14px;font-weight:700;cursor:pointer;font-size:.82rem;white-space:nowrap}
     .btn-retry:hover{background:rgba(245,158,11,.25)}
-
-    /* Results toolbar */
     .results-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 14px;background:rgba(7,16,35,.8);border-radius:12px;margin-bottom:12px;border:1px solid var(--border)}
     .results-title{font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);flex:1;display:flex;align-items:center;gap:6px}
     .results-title .dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green)}
-
-    /* Badges */
     .badge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:.75rem;font-family:monospace;font-weight:700}
     .badge-error{background:rgba(239,68,68,.1);color:var(--red);border:1px solid rgba(239,68,68,.2)}
     .badge-warn{background:rgba(245,158,11,.1);color:var(--orange);border:1px solid rgba(245,158,11,.2)}
     .badge-ok{background:rgba(34,197,94,.08);color:var(--green);border:1px solid rgba(34,197,94,.15)}
-
-    /* Result cards */
     .grid{display:grid;grid-template-columns:1fr;gap:14px}
     .title-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
     .tag{font-weight:900;padding:6px 10px;border-radius:999px;color:#0b1220}
@@ -139,19 +104,10 @@ HTML = r"""
     .muted{color:var(--muted)}
     .err{color:var(--red);font-weight:800}
     pre{white-space:pre-wrap;word-break:break-word;margin:0}
-
-    /* Syntax highlight */
-    .hl-error{color:var(--red);font-weight:700}
-    .hl-warn{color:var(--orange);font-weight:600}
-    .hl-ok{color:var(--green)}
-    .hl-info{color:var(--accent)}
-    .hl-debug{color:var(--muted)}
-    .hl-ts{color:#78909c;font-size:.78rem}
-    .hl-ip{color:#b39ddb}
-    .hl-num{color:#ffd740}
-    .hl-path{color:#80cbc4}
+    .hl-error{color:var(--red);font-weight:700}.hl-warn{color:var(--orange);font-weight:600}
+    .hl-ok{color:var(--green)}.hl-info{color:var(--accent)}.hl-debug{color:var(--muted)}
+    .hl-ts{color:#78909c;font-size:.78rem}.hl-ip{color:#b39ddb}.hl-num{color:#ffd740}.hl-path{color:#80cbc4}
     .section-hdr{display:block;margin:14px 0 6px;padding:5px 10px;background:rgba(0,212,255,.08);border-right:3px solid var(--accent);border-radius:4px;color:var(--accent);font-weight:700;font-size:.82rem;text-transform:uppercase;letter-spacing:.5px}
-
     #results-section{animation:slideIn .4s ease}
     @keyframes slideIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
     @media(max-width:600px){h1{font-size:1.9rem}.row{flex-direction:column;align-items:stretch}}
@@ -159,7 +115,6 @@ HTML = r"""
 </head>
 <body>
 <div class="wrap">
-
   <header>
     <div class="logo-wrap">
       <h1>Log Analyzer</h1>
@@ -178,25 +133,20 @@ HTML = r"""
       <div class="drop-label"><strong>גרור קובץ לכאן</strong> או לחץ לבחירה</div>
       <div class="drop-label" style="font-size:.73rem;margin-top:3px;opacity:.7">.log · .txt · .json · .csv</div>
     </div>
-
     <div class="file-badge" id="fileBadge">
       <span>📄</span><span id="fileName"></span><span id="fileSize" style="opacity:.6"></span>
       <button id="removeFile">✕</button>
     </div>
-
     <div class="divider">או הדבק טקסט</div>
     <textarea id="log" placeholder="הדבק כאן את הלוג..."></textarea>
-
     <div style="height:12px"></div>
     <div class="row">
       <button class="btn btn-primary" id="analyzeBtn" onclick="analyze()">⚡ נתח לוג</button>
       <button class="btn btn-ghost" onclick="clearAll()">🗑 נקה</button>
-      <button class="btn btn-example" onclick="loadTimeoutExample()">⏱ טען דוגמת Timeout</button>
       <span id="status" class="muted"></span>
     </div>
   </div>
 
-  <!-- Timeout Banner -->
   <div class="timeout-banner" id="timeoutBanner">
     <div style="font-size:1.4rem">⏱️</div>
     <div class="timeout-body">
@@ -224,10 +174,9 @@ HTML = r"""
     </div>
     <div id="out" class="grid"></div>
   </div>
-
 </div>
+
 <script>
-// ─── Matrix ───────────────────────────────────────────────────
 (function(){
   var canvas=document.getElementById('matrixCanvas'),ctx=canvas.getContext('2d'),SIZE=88;
   canvas.width=canvas.height=SIZE;
@@ -248,25 +197,8 @@ HTML = r"""
   },40);
 })();
 
-// ─── Timeout Example ──────────────────────────────────────────
-function loadTimeoutExample(){
-  document.getElementById('log').value =
-    '[2024-03-10 14:22:01] INFO  Starting request GetOrders for patient P-4821\n'+
-    '[2024-03-10 14:22:01] DEBUG Acquiring DB connection from pool (5/20 active)\n'+
-    '[2024-03-10 14:22:06] WARN  DB query slow: SELECT * FROM orders WHERE patient_id=4821 (4800ms)\n'+
-    '[2024-03-10 14:22:11] ERROR SocketTimeoutException: Read timed out after 10000ms\n'+
-    '[2024-03-10 14:22:11] ERROR   at com.db.ConnectionPool.acquire(ConnectionPool.java:142)\n'+
-    '[2024-03-10 14:22:11] ERROR   at com.service.OrderService.getOrders(OrderService.java:87)\n'+
-    '[2024-03-10 14:22:11] INFO  Retry attempt 1/3\n'+
-    '[2024-03-10 14:22:16] ERROR Request timeout: operation timed out after 15000ms\n'+
-    '[2024-03-10 14:22:16] ERROR HTTP 504 Gateway Timeout returned to client';
-  setStatus('דוגמת Timeout נטענה — לחץ נתח לוג ▲', false);
-}
-
-// ─── State ────────────────────────────────────────────────────
 var lastResult=null,TIMEOUT_MS=90000;
 
-// ─── Drag & Drop ──────────────────────────────────────────────
 var dropZone=document.getElementById('dropZone'),fileInput=document.getElementById('file');
 ['dragenter','dragover'].forEach(function(e){dropZone.addEventListener(e,function(ev){ev.preventDefault();dropZone.classList.add('dragover');});});
 ['dragleave','drop'].forEach(function(e){dropZone.addEventListener(e,function(ev){ev.preventDefault();dropZone.classList.remove('dragover');});});
@@ -285,7 +217,6 @@ function loadFile(file){
   var reader=new FileReader();reader.onload=function(e){document.getElementById('log').value=e.target.result;};reader.readAsText(file);
 }
 
-// ─── Loader ───────────────────────────────────────────────────
 var loaderMsgs=['מנתח לוגים...','מזהה שגיאות...','בודק דפוסים...','מסכם תוצאות...'],loaderInterval;
 function showLoader(){
   document.getElementById('loader').classList.add('active');
@@ -296,7 +227,6 @@ function showLoader(){
 }
 function hideLoader(){document.getElementById('loader').classList.remove('active');document.getElementById('analyzeBtn').disabled=false;clearInterval(loaderInterval);}
 
-// ─── Helpers ──────────────────────────────────────────────────
 function escapeHtml(s){return String(s).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");}
 function textFromMaybeObj(x){
   if(x==null)return"";if(typeof x==="string")return x;
@@ -310,7 +240,6 @@ function severityTagFromSteps(s){
   return["לא דחוף","green"];
 }
 
-// ─── Syntax Highlight ─────────────────────────────────────────
 function highlightText(text){
   return text.split('\n').map(function(line){
     if(!line.trim())return'';
@@ -330,24 +259,14 @@ function highlightText(text){
   }).join('\n');
 }
 
-// ─── Severity Card ────────────────────────────────────────────
-function renderSeverityCard(score, label){
+function renderSeverityCard(score,label){
   var icons={1:'🟢',2:'🟠',3:'🔴'};
   var cls={1:'sev-low',2:'sev-medium',3:'sev-high'};
   var desc={1:'חומרה נמוכה — אין השפעה מיידית',2:'חומרה בינונית — דורש בדיקה',3:'חומרה גבוהה — טיפול מיידי נדרש!'};
-  var s=score||2, l=label||'Medium';
-  return '<div class="severity-card '+cls[s]+'">'
-    +'<div class="sev-icon">'+icons[s]+'</div>'
-    +'<div style="flex:1">'
-    +'<div class="sev-label">Severity Score</div>'
-    +'<div class="sev-value">'+l+' ('+s+'/3)</div>'
-    +'<div class="sev-bar-wrap"><div class="sev-bar"></div></div>'
-    +'<div style="font-size:.78rem;color:var(--muted);margin-top:4px">'+desc[s]+'</div>'
-    +'</div>'
-    +'</div>';
+  var s=score||2,l=label||'Medium';
+  return '<div class="severity-card '+cls[s]+'"><div class="sev-icon">'+icons[s]+'</div><div style="flex:1"><div class="sev-label">Severity Score</div><div class="sev-value">'+l+' ('+s+'/3)</div><div class="sev-bar-wrap"><div class="sev-bar"></div></div><div style="font-size:.78rem;color:var(--muted);margin-top:4px">'+desc[s]+'</div></div></div>';
 }
 
-// ─── Summary Badges ───────────────────────────────────────────
 function buildSummaryBadges(result){
   var text=JSON.stringify(result).toLowerCase();
   var count=function(p){return p.reduce(function(a,r){return a+(text.match(r)||[]).length;},0);};
@@ -361,7 +280,6 @@ function buildSummaryBadges(result){
   document.getElementById('summaryBadges').innerHTML=html;
 }
 
-// ─── Render ───────────────────────────────────────────────────
 function card(title,contentHtml,tag){
   var label=tag[0],color=tag[1];
   return'<div class="card"><div class="title-row"><div style="font-size:18px;font-weight:900">'+title+'</div><span class="tag '+color+'">'+label+'</span></div><div style="height:10px"></div>'+contentHtml+'</div>';
@@ -380,10 +298,7 @@ function render(result){
   var out=document.getElementById("out");
   out.innerHTML="";
   buildSummaryBadges(result);
-
-  // Severity Card — ראשון תמיד
-  out.innerHTML+=renderSeverityCard(result.severity_score, result.severity_label);
-
+  out.innerHTML+=renderSeverityCard(result.severity_score,result.severity_label);
   var nextStepsTag=severityTagFromSteps(result.next_steps);
   var factsHtml=(result.confirmed_facts||[]).length
     ?'<pre style="font-family:monospace;font-size:.82rem;line-height:1.8">'+highlightText((result.confirmed_facts||[]).map(textFromMaybeObj).join('\n'))+'</pre>'
@@ -391,19 +306,15 @@ function render(result){
   out.innerHTML+=card("עובדות מאושרות ✅",factsHtml,["לא דחוף","green"]);
   out.innerHTML+=card("הכשל הראשי 🎯",'<pre style="font-family:monospace;font-size:.85rem;line-height:1.7">'+highlightText(result.primary_failure||"—")+'</pre>',["בינוני","orange"]);
   out.innerHTML+=card("Root Cause 🧠",'<pre style="font-family:monospace;font-size:.85rem;line-height:1.7">'+highlightText(result.root_cause||"—")+'</pre>',["בינוני","orange"]);
-
   var hyp=result.hypotheses_ranked||[];
   var hypHtml=hyp.length?'<ul>'+hyp.map(function(h){return'<li><b>#'+h.rank+'</b> '+escapeHtml(h.description)+' <span class="muted">— '+escapeHtml(h.justification||"")+'</span></li>';}).join("")+'</ul>':'<div class="muted">—</div>';
   out.innerHTML+=card("השערות מדורגות 📌",hypHtml,["בינוני","orange"]);
   out.innerHTML+=card("NEXT STEPS ➜",list(result.next_steps),nextStepsTag);
-
   var conTag=(result.contradictions&&result.contradictions.length)?["דחוף","red"]:["לא דחוף","green"];
   out.innerHTML+=card("סתירות / נקודות חשודות 🧩",list(result.contradictions),conTag);
-
   document.getElementById('results-section').style.display='block';
 }
 
-// ─── Analyze ──────────────────────────────────────────────────
 function setStatus(msg,isErr){var el=document.getElementById("status");el.className=isErr?"err":"muted";el.textContent=msg||"";}
 function showTimeoutBanner(){document.getElementById('timeoutBanner').classList.add('show');}
 
@@ -437,10 +348,9 @@ async function analyze(){
   }
 }
 
-// ─── Export ───────────────────────────────────────────────────
 function resultToMarkdown(r){
   if(!r)return'';
-  var lines=['# Log Analysis Report\n','## Severity: '+(r.severity_label||'')+'  ('+( r.severity_score||'')+'  /3)\n'];
+  var lines=['# Log Analysis Report\n','## Severity: '+(r.severity_label||'')+'  ('+(r.severity_score||'')+'  /3)\n'];
   lines.push('## עובדות מאושרות ✅');(r.confirmed_facts||[]).forEach(function(f){lines.push('- '+textFromMaybeObj(f));});
   lines.push('\n## הכשל הראשי 🎯');lines.push(r.primary_failure||'—');
   lines.push('\n## Root Cause 🧠');lines.push(r.root_cause||'—');
@@ -475,7 +385,6 @@ function exportPDF(){
   }catch(e){alert('שגיאה ביצירת PDF. נסה ייצוא Markdown.');}
 }
 
-// ─── Clear ────────────────────────────────────────────────────
 function clearAll(){
   document.getElementById("log").value="";document.getElementById("file").value="";
   document.getElementById("fileBadge").classList.remove('show');
