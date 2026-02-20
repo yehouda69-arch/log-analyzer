@@ -23,6 +23,58 @@ def _has_real_timeout(log_text: str) -> bool:
     )
 
 
+def _smart_trim(log_text: str, max_lines: int = 500, context: int = 2) -> str:
+    """
+    Instead of cutting the log by position, scan the entire log
+    and extract only lines that contain important signals + context around them.
+    A failure on line 2500/3000 will still be caught.
+    """
+    lines = log_text.splitlines()
+
+    # Already small enough
+    if len(lines) <= max_lines:
+        return log_text
+
+    IMPORTANT = re.compile(
+        r"(error|fatal|exception|critical|timeout|timed.?out|warn|"
+        r"failed|failure|refused|denied|invalid|unauthorized|"
+        r"\b408\b|\b500\b|\b502\b|\b503\b|\b504\b|"
+        r"stacktrace|stack.?trace|at com\.|at org\.|at java\.|at System\.)",
+        re.IGNORECASE
+    )
+
+    # Collect important line indices + context
+    important_idx = set()
+    for i, line in enumerate(lines):
+        if IMPORTANT.search(line):
+            for j in range(max(0, i - context), min(len(lines), i + context + 1)):
+                important_idx.add(j)
+
+    # Nothing found — fallback to first+last
+    if not important_idx:
+        half = max_lines // 2
+        return "\n".join(lines[:half] + [f"... [{len(lines) - max_lines} lines skipped] ..."] + lines[-half:])
+
+    selected = sorted(important_idx)
+
+    # Still too many — keep first max_lines
+    if len(selected) > max_lines:
+        selected = selected[:max_lines]
+
+    # Build result with gap markers
+    result_lines = []
+    prev = -1
+    for i in selected:
+        if prev != -1 and i > prev + 1:
+            result_lines.append(f"... [{i - prev - 1} lines skipped] ...")
+        result_lines.append(lines[i])
+        prev = i
+
+    trimmed = "\n".join(result_lines)
+    trimmed += f"\n\n[Smart trim: {len(lines)} total lines → {len(selected)} relevant lines extracted]"
+    return trimmed
+
+
 def _extract_exception_type(log_text: str) -> Optional[str]:
     return _find_first_group(r"(?:System\.)?([A-Za-z]+Exception)\b", log_text, 1)
 
@@ -108,6 +160,7 @@ def _severity_label(score: int) -> str:
 
 
 def analyze_log(log_text: str) -> LogAnalysisResponse:
+    log_text = _smart_trim(log_text)
     facts: List[str] = []
     contradictions: List[str] = []
 
