@@ -19,7 +19,12 @@ def _find_first_group(pattern: str, text: str, group: int = 1) -> Optional[str]:
 
 
 def _has_real_timeout(log_text: str) -> bool:
-    return _contains(r"(timeoutexception|sockettimeoutexception|timed out|request timeout|\b408\b|\b504\b)", log_text)
+    return _contains(
+        r"(timeoutexception|sockettimeoutexception|timed out|request timeout"
+        r"|time.?out|\bTIMEOUT\b|\b408\b|\b504\b|gateway timeout|read timed out"
+        r"|connection timed out|operation timed out)",
+        log_text
+    )
 
 
 def _extract_exception_type(log_text: str) -> Optional[str]:
@@ -28,7 +33,11 @@ def _extract_exception_type(log_text: str) -> Optional[str]:
 
 def _extract_request_exception_type(log_text: str) -> Optional[str]:
     """Extract custom request exceptions like PatientNotFoundRequestException."""
-    return _find_first_group(r"([A-Za-z]+(?:NotFound|BadRequest|Unauthorized|Forbidden|Conflict|Request)[A-Za-z]*(?:Exception|Error)?)\b", log_text, 1)
+    return _find_first_group(
+        r"([A-Za-z]+(?:NotFound|BadRequest|Unauthorized|Forbidden|Conflict|Request)"
+        r"[A-Za-z]*(?:Exception|Error)?)\b",
+        log_text, 1
+    )
 
 
 def _extract_method_hint(log_text: str) -> Optional[str]:
@@ -45,9 +54,17 @@ def _extract_top_frames(log_text: str, limit: int = 3) -> List[str]:
 
 
 def _severity_from_log(log_text: str) -> int:
-    if _contains(r"\b503\b|\b502\b|\b500\b|outofmemory|no space left|sslhandshake|certificateexpired|too many connections|circuit breaker.*open", log_text):
+    if _contains(
+        r"\b503\b|\b502\b|\b500\b|outofmemory|no space left|sslhandshake"
+        r"|certificateexpired|too many connections|circuit breaker.*open",
+        log_text
+    ):
         return 3
-    if _contains(r"\b401\b|unauthorized|\b404\b|rate limit|\b429\b|failed to acquire connection", log_text) or _has_real_timeout(log_text) or _contains(r"(?:system\.)?(?:aggregateexception|nullreferenceexception)\b", log_text):
+    if (
+        _contains(r"\b401\b|unauthorized|\b404\b|rate limit|\b429\b|failed to acquire connection", log_text)
+        or _has_real_timeout(log_text)
+        or _contains(r"(?:system\.)?(?:aggregateexception|nullreferenceexception)\b", log_text)
+    ):
         return 2
     if _contains(r"NotFound|BadRequest|RequestException", log_text):
         return 2
@@ -105,22 +122,52 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
         facts.append("No recognizable failure signature found in provided log snippet.")
 
     if _contains(r"active connections:\s*100/100", log_text) and _contains(r"active connections:\s*5/100", log_text):
-        contradictions.append("Pool drops from 100/100 to 5/100 within the snippet; suggests transient stall/reset (not a persistent leak).")
+        contradictions.append(
+            "Pool drops from 100/100 to 5/100 within the snippet; "
+            "suggests transient stall/reset (not a persistent leak)."
+        )
 
     severity_score = _severity_from_log(log_text)
     severity_label = _severity_label(severity_score)
 
     # --- Routing ---
+    # NOTE: Timeout is checked FIRST — it is the root cause even when
+    # NullReferenceException or other exceptions appear alongside it.
 
-    # PatientNotFoundRequestException or similar custom NotFound/Request exceptions
-    if req_ex_type and _contains(r"NotFound|notfound", req_ex_type):
+    if _has_real_timeout(log_text):
+        primary_failure = "Timeout"
+        root_cause = "Operation timed out (explicit timeout evidence present in log)"
+        hypotheses = [
+            Hypothesis(rank=1, description="DB latency / slow query caused the timeout",
+                       justification="Explicit timeout evidence present in log"),
+            Hypothesis(rank=2, description="Network stall between services",
+                       justification="Timeout can be caused by slow downstream response"),
+            Hypothesis(rank=3, description="Thread/connection pool starvation",
+                       justification="Pool exhaustion can cause operations to time out waiting"),
+        ]
+        next_steps = [
+            NextStep(text="Identify which exact operation timed out (DB query, HTTP call, pool acquire) using scoped timing logs.", urgency="high"),
+            NextStep(text="Check DB slow-query log and network latency metrics around the timestamp.", urgency="high"),
+            NextStep(text="Correlate with error rate and latency dashboards to identify the scope of the impact.", urgency="medium"),
+        ]
+        # If NullReferenceException also present, mention it as a secondary finding
+        if _contains(r"(?:system\.)?nullreferenceexception\b", log_text):
+            contradictions.append(
+                "NullReferenceException also appears in log — likely a secondary failure "
+                "caused by the timeout (e.g. null returned on timeout path). Treat Timeout as primary."
+            )
+
+    elif req_ex_type and _contains(r"NotFound|notfound", req_ex_type):
         entity = re.sub(r"(NotFound|Request|Exception|Error)", "", req_ex_type, flags=re.IGNORECASE).strip() or "Entity"
         primary_failure = f"{req_ex_type}: {entity} not found"
         root_cause = f"A requested {entity} resource does not exist or could not be located (based on {req_ex_type} in log)."
         hypotheses = [
-            Hypothesis(rank=1, description=f"{entity} ID missing or incorrect", justification=f"{req_ex_type} raised — resource lookup returned empty"),
-            Hypothesis(rank=2, description=f"{entity} was deleted or never created", justification="Not-found exceptions can indicate data consistency issues"),
-            Hypothesis(rank=3, description="Wrong environment/tenant routing", justification="Request may be reaching wrong DB or service instance"),
+            Hypothesis(rank=1, description=f"{entity} ID missing or incorrect",
+                       justification=f"{req_ex_type} raised — resource lookup returned empty"),
+            Hypothesis(rank=2, description=f"{entity} was deleted or never created",
+                       justification="Not-found exceptions can indicate data consistency issues"),
+            Hypothesis(rank=3, description="Wrong environment/tenant routing",
+                       justification="Request may be reaching wrong DB or service instance"),
         ]
         next_steps = [
             NextStep(text=f"Verify the {entity} ID in the request exists in the database.", urgency="high"),
@@ -132,8 +179,10 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
         primary_failure = "NullReferenceException"
         root_cause = "NullReferenceException present in log (object reference not set)."
         hypotheses = [
-            Hypothesis(rank=1, description="Null object dereference in application code", justification="NullReferenceException present in log"),
-            Hypothesis(rank=2, description="Unexpected/invalid input leading to null values", justification="NullReferenceException often triggered by missing fields"),
+            Hypothesis(rank=1, description="Null object dereference in application code",
+                       justification="NullReferenceException present in log"),
+            Hypothesis(rank=2, description="Unexpected/invalid input leading to null values",
+                       justification="NullReferenceException often triggered by missing fields"),
         ]
         next_steps = [
             NextStep(text="Locate the first NullReferenceException stack trace frame and identify which variable was null.", urgency="high"),
@@ -144,8 +193,10 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
         primary_failure = "AggregateException"
         root_cause = "AggregateException present in log (one or more inner exceptions)."
         hypotheses = [
-            Hypothesis(rank=1, description="Inner exception is the real root cause", justification="AggregateException indicates inner exceptions"),
-            Hypothesis(rank=2, description="Async task failure aggregated at await/wait boundary", justification="AggregateException commonly wraps async failures"),
+            Hypothesis(rank=1, description="Inner exception is the real root cause",
+                       justification="AggregateException indicates inner exceptions"),
+            Hypothesis(rank=2, description="Async task failure aggregated at await/wait boundary",
+                       justification="AggregateException commonly wraps async failures"),
         ]
         next_steps = [
             NextStep(text="Find the first INNER exception inside AggregateException and treat that as root cause.", urgency="high"),
@@ -156,8 +207,10 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
         primary_failure = "Downstream service rejected request (401 Unauthorized)"
         root_cause = "Missing/invalid Authorization for downstream call (based on 401 evidence in log)"
         hypotheses = [
-            Hypothesis(rank=1, description="Authorization header missing or invalid", justification="401/Unauthorized present in log"),
-            Hypothesis(rank=2, description="Token expired or rotated", justification="401 can be returned on expired credentials"),
+            Hypothesis(rank=1, description="Authorization header missing or invalid",
+                       justification="401/Unauthorized present in log"),
+            Hypothesis(rank=2, description="Token expired or rotated",
+                       justification="401 can be returned on expired credentials"),
         ]
         next_steps = [
             NextStep(text="Inspect outgoing request headers to downstream service (Authorization present? format correct?).", urgency="high"),
@@ -167,7 +220,8 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
     elif _contains(r"no space left on device", log_text):
         primary_failure = "Write failed due to disk full"
         root_cause = "No space left on device"
-        hypotheses = [Hypothesis(rank=1, description="Disk exhausted on host/container", justification="'No space left on device' present in log")]
+        hypotheses = [Hypothesis(rank=1, description="Disk exhausted on host/container",
+                                 justification="'No space left on device' present in log")]
         next_steps = [
             NextStep(text="Free disk space (rotate/delete old logs, clear temp/cache) and re-run failing operation.", urgency="high"),
             NextStep(text="Add disk usage alerting and log retention policy.", urgency="medium"),
@@ -177,8 +231,10 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
         primary_failure = "Process ran out of memory (OOM)"
         root_cause = "Memory limit exceeded (heap exhausted / workload too large)"
         hypotheses = [
-            Hypothesis(rank=1, description="Heap too small for workload", justification="OutOfMemory/heap space present in log"),
-            Hypothesis(rank=2, description="Memory leak", justification="OOM can be caused by gradual growth"),
+            Hypothesis(rank=1, description="Heap too small for workload",
+                       justification="OutOfMemory/heap space present in log"),
+            Hypothesis(rank=2, description="Memory leak",
+                       justification="OOM can be caused by gradual growth"),
         ]
         next_steps = [
             NextStep(text="Reduce batch size / payload or increase memory limit temporarily to restore service.", urgency="high"),
@@ -189,8 +245,10 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
         primary_failure = "TLS handshake failed"
         root_cause = "Certificate validation failure (often expired or untrusted chain)"
         hypotheses = [
-            Hypothesis(rank=1, description="Certificate expired", justification="CertificateExpired/NotAfter/PKIX failure patterns"),
-            Hypothesis(rank=2, description="Missing intermediate CA", justification="PKIX path validation failed can indicate chain issues"),
+            Hypothesis(rank=1, description="Certificate expired",
+                       justification="CertificateExpired/NotAfter/PKIX failure patterns"),
+            Hypothesis(rank=2, description="Missing intermediate CA",
+                       justification="PKIX path validation failed can indicate chain issues"),
         ]
         next_steps = [
             NextStep(text="Check certificate expiry and renew/rotate certs for the target endpoint.", urgency="high"),
@@ -201,8 +259,10 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
         primary_failure = "DNS resolution failed"
         root_cause = "Service hostname cannot be resolved (DNS/service discovery issue)"
         hypotheses = [
-            Hypothesis(rank=1, description="DNS outage/misconfig", justification="UnknownHostException present in log"),
-            Hypothesis(rank=2, description="Wrong hostname/env config", justification="Common cause is incorrect service URL"),
+            Hypothesis(rank=1, description="DNS outage/misconfig",
+                       justification="UnknownHostException present in log"),
+            Hypothesis(rank=2, description="Wrong hostname/env config",
+                       justification="Common cause is incorrect service URL"),
         ]
         next_steps = [
             NextStep(text="Verify hostname and DNS resolution from the running environment (nslookup/dig).", urgency="high"),
@@ -225,9 +285,12 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
         primary_failure = "Connection pool exhaustion"
         root_cause = "No available DB connections in pool (pool saturation / acquire failure)"
         hypotheses = [
-            Hypothesis(rank=1, description="Transient DB stall or blocking event holding connections", justification="Pool saturation evidence in log"),
-            Hypothesis(rank=2, description="DB server max_connections reached", justification="'too many connections' may appear in log"),
-            Hypothesis(rank=3, description="Long-running transactions or leak", justification="Pool saturation can be caused by unreleased connections"),
+            Hypothesis(rank=1, description="Transient DB stall or blocking event holding connections",
+                       justification="Pool saturation evidence in log"),
+            Hypothesis(rank=2, description="DB server max_connections reached",
+                       justification="'too many connections' may appear in log"),
+            Hypothesis(rank=3, description="Long-running transactions or leak",
+                       justification="Pool saturation can be caused by unreleased connections"),
         ]
         next_steps = [
             NextStep(text="Confirm whether timeout is pool-wait vs DB-call timeout (add scoped timing logs).", urgency="high"),
@@ -235,22 +298,11 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
             NextStep(text="Enable pool long-hold/leak detection and log slow queries.", urgency="medium"),
         ]
 
-    elif _has_real_timeout(log_text):
-        primary_failure = "Timeout"
-        root_cause = "Operation timed out (explicit timeout evidence present in log)"
-        hypotheses = [
-            Hypothesis(rank=1, description="DB latency / slow query", justification="Explicit timeout evidence present"),
-            Hypothesis(rank=2, description="Network stall", justification="Explicit timeout evidence present"),
-        ]
-        next_steps = [
-            NextStep(text="Identify which operation timed out (acquire vs query vs HTTP) using scoped timing logs.", urgency="high"),
-            NextStep(text="Correlate with latency metrics and error rate around timestamp.", urgency="medium"),
-        ]
-
     else:
         primary_failure = "Unknown"
         root_cause = "Insufficient evidence in provided snippet to determine root cause"
-        hypotheses = [Hypothesis(rank=1, description="Need more context", justification="No clear signature in snippet")]
+        hypotheses = [Hypothesis(rank=1, description="Need more context",
+                                 justification="No clear signature in snippet")]
         next_steps = [
             NextStep(text="Provide a wider time window (±2 minutes) around the failure.", urgency="medium"),
             NextStep(text="Include stack trace / error codes if available.", urgency="low"),
