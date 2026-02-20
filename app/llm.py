@@ -1,16 +1,12 @@
 import re
-from typing import Optional, List, Tuple
+import datetime
+from typing import Optional, List
 
 from app.schemas import LogAnalysisResponse, Hypothesis, NextStep
 
 
 def _contains(pattern: str, text: str) -> bool:
     return re.search(pattern, text, re.IGNORECASE) is not None
-
-
-def _find_first(pattern: str, text: str) -> Optional[str]:
-    m = re.search(pattern, text, re.IGNORECASE)
-    return m.group(0) if m else None
 
 
 def _find_first_group(pattern: str, text: str, group: int = 1) -> Optional[str]:
@@ -32,7 +28,6 @@ def _extract_exception_type(log_text: str) -> Optional[str]:
 
 
 def _extract_request_exception_type(log_text: str) -> Optional[str]:
-    """Extract custom request exceptions like PatientNotFoundRequestException."""
     return _find_first_group(
         r"([A-Za-z]+(?:NotFound|BadRequest|Unauthorized|Forbidden|Conflict|Request)"
         r"[A-Za-z]*(?:Exception|Error)?)\b",
@@ -44,13 +39,50 @@ def _extract_method_hint(log_text: str) -> Optional[str]:
     hook = _find_first_group(r"hook method:\s*([A-Za-z0-9_]+)", log_text, 1)
     if hook:
         return hook
-    frame = _find_first_group(r"\bat\s+[A-Za-z0-9_.]+\.(\w+)\s*\(", log_text, 1)
-    return frame
+    return _find_first_group(r"\bat\s+[A-Za-z0-9_.]+\.(\w+)\s*\(", log_text, 1)
 
 
 def _extract_top_frames(log_text: str, limit: int = 3) -> List[str]:
     frames = re.findall(r"\bat\s+([A-Za-z0-9_.]+\.\w+)\s*\(", log_text, flags=re.IGNORECASE)
     return frames[:limit]
+
+
+def _extract_timestamp(log_text: str) -> Optional[str]:
+    m = re.search(
+        r"\b(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?)\b",
+        log_text
+    )
+    if m:
+        return m.group(1)
+    m = re.search(r'timestamp="(\d{13})"', log_text)
+    if m:
+        ts = int(m.group(1)) / 1000
+        return datetime.datetime.utcfromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S UTC")
+    return None
+
+
+def _extract_event_id(log_text: str) -> Optional[str]:
+    patterns = [
+        r'name="EventId"\s+value="([^"]+)"',
+        r'(?:EventId|RequestId|CorrelationId|TraceId|request[_-]?id)[=:\s"]+([a-f0-9\-]{8,})',
+    ]
+    for p in patterns:
+        m = re.search(p, log_text, re.IGNORECASE)
+        if m:
+            return m.group(1)
+    return None
+
+
+def _extract_machine_name(log_text: str) -> Optional[str]:
+    patterns = [
+        r'name="log4jmachinename"\s+value="([^"]+)"',
+        r'(?:machinename|hostname|server|host)[=:\s"]+([A-Za-z0-9._-]{3,})',
+    ]
+    for p in patterns:
+        m = re.search(p, log_text, re.IGNORECASE)
+        if m:
+            return m.group(1)
+    return None
 
 
 def _severity_from_log(log_text: str) -> int:
@@ -83,8 +115,17 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
     req_ex_type = _extract_request_exception_type(log_text)
     method_hint = _extract_method_hint(log_text)
     top_frames = _extract_top_frames(log_text, limit=3)
+    timestamp = _extract_timestamp(log_text)
+    event_id = _extract_event_id(log_text)
+    machine_name = _extract_machine_name(log_text)
 
     # --- Facts ---
+    if timestamp:
+        facts.append(f"Failure timestamp: {timestamp}")
+    if event_id:
+        facts.append(f"Request EventId: {event_id}")
+    if machine_name:
+        facts.append(f"Server: {machine_name}")
     if req_ex_type and req_ex_type != ex_type:
         facts.append(f"Log contains custom request exception: {req_ex_type}.")
     if ex_type:
@@ -131,8 +172,7 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
     severity_label = _severity_label(severity_score)
 
     # --- Routing ---
-    # NOTE: Timeout is checked FIRST — it is the root cause even when
-    # NullReferenceException or other exceptions appear alongside it.
+    # Timeout is checked FIRST — it is the root cause even when other exceptions appear alongside it.
 
     if _has_real_timeout(log_text):
         primary_failure = "Timeout"
@@ -150,7 +190,6 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
             NextStep(text="Check DB slow-query log and network latency metrics around the timestamp.", urgency="high"),
             NextStep(text="Correlate with error rate and latency dashboards to identify the scope of the impact.", urgency="medium"),
         ]
-        # If NullReferenceException also present, mention it as a secondary finding
         if _contains(r"(?:system\.)?nullreferenceexception\b", log_text):
             contradictions.append(
                 "NullReferenceException also appears in log — likely a secondary failure "
