@@ -197,17 +197,19 @@ def _severity_label(score: int) -> str:
 
 def _decode_log(log_text: str) -> str:
     """
-    Handle UTF-16 encoded logs (common in Windows/.NET environments).
-    If the raw string starts with the UTF-16 BOM, re-decode from bytes.
+    Handle UTF-16 encoded logs. Safe version: never raises UnicodeEncodeError.
     """
-    if log_text.startswith('\xff\xfe') or log_text.startswith('\xfe\xff'):
-        raw = log_text.encode('latin-1')
-        return raw.decode('utf-16', errors='replace')
-    # Heuristic: many null bytes = likely UTF-16 read as latin-1
-    sample = log_text[:200].replace('\r', '').replace('\n', '')
-    if len(sample) > 10 and sum(1 for c in sample if c == '\x00') > len(sample) // 4:
-        raw = log_text.encode('latin-1')
-        return raw.decode('utf-16', errors='replace')
+    try:
+        if log_text.startswith('\xff\xfe') or log_text.startswith('\xfe\xff'):
+            raw = log_text.encode('latin-1', errors='replace')
+            return raw.decode('utf-16', errors='replace')
+        sample = log_text[:200].replace('\r', '').replace('\n', '')
+        null_count = sum(1 for c in sample if c == '\x00')
+        if len(sample) > 10 and null_count > len(sample) // 4:
+            raw = log_text.encode('latin-1', errors='replace')
+            return raw.decode('utf-16', errors='replace')
+    except Exception:
+        pass
     return log_text
 
 
