@@ -284,9 +284,66 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
     severity_label = _severity_label(severity_score)
 
     # --- Routing ---
-    # Timeout is checked FIRST — it is the root cause even when other exceptions appear alongside it.
+    # Priority order (highest specificity first):
+    # 1. TCP retry exhausted  — most specific network failure
+    # 2. HTTP 405             — most specific HTTP error
+    # 3. Timeout              — but only when NOT caused by TCP (handled via contradiction)
+    # 4. NotFound             — resource missing
+    # 5. NullReference        — code bug
+    # 6. AggregateException   — wrapper exception
+    # 7. 401 Unauthorized     — auth failure
+    # 8. No space / OOM / SSL / DNS / 429 / pool — infrastructure failures
+    # 9. Unknown
 
-    if _has_real_timeout(log_text):
+    if _has_tcp_retry_exhausted(log_text):
+        ip = _find_first_group(r"ip '([^']+)'", log_text, 1) or              _find_first_group(r"to '([^']+)'", log_text, 1) or "remote host"
+        retry_count = _find_first_group(r"after (\d+) retr", log_text, 1) or "multiple"
+        primary_failure = f"TCP connection failure to {ip} after {retry_count} retries"
+        root_cause = (
+            f"Could not establish TCP connection to {ip}. "
+            f"All {retry_count} retry attempts failed — the remote host is unreachable or refusing connections."
+        )
+        hypotheses = [
+            Hypothesis(rank=1, description=f"Remote host {ip} is down or unreachable",
+                       justification="Connection attempt timed out on every retry"),
+            Hypothesis(rank=2, description="Firewall or network policy blocking the port",
+                       justification="Socket error 'not connected' can indicate a blocked port"),
+            Hypothesis(rank=3, description="Wrong IP/port configured for the destination service",
+                       justification="Misconfiguration is a common cause of persistent TCP failures"),
+        ]
+        next_steps = [
+            NextStep(text=f"Verify that {ip} is reachable from this host (ping / telnet / nc).", urgency="high"),
+            NextStep(text="Check firewall rules and network ACLs for the target port.", urgency="high"),
+            NextStep(text="Confirm the destination IP and port in the service configuration are correct.", urgency="medium"),
+        ]
+        if _has_real_timeout(log_text):
+            contradictions.append(
+                "Timeout also appears in log — it is a symptom of the TCP connection failure, not an independent root cause."
+            )
+
+    elif _has_method_not_allowed(log_text):
+        endpoint = _find_first_group(r"requestUri:([^\s*]+)", log_text, 1) or "the endpoint"
+        http_method = _find_first_group(r"(GET|POST|PUT|DELETE|PATCH)\s+-\s+(?:base|full|absolute)", log_text, 1) or "HTTP"
+        primary_failure = f"HTTP 405 MethodNotAllowed on {endpoint}"
+        root_cause = (
+            f"The server rejected the {http_method} request to '{endpoint}' — "
+            f"the endpoint does not support this HTTP verb."
+        )
+        hypotheses = [
+            Hypothesis(rank=1, description="Wrong HTTP method used (e.g. POST instead of GET)",
+                       justification="405 MethodNotAllowed means the URL exists but the verb is wrong"),
+            Hypothesis(rank=2, description="API route changed or versioned differently",
+                       justification="Endpoint may have moved and now expects a different verb"),
+            Hypothesis(rank=3, description="Client code calling wrong endpoint URL",
+                       justification="URL mismatch can cause method conflicts"),
+        ]
+        next_steps = [
+            NextStep(text=f"Check the API documentation for '{endpoint}' and verify the correct HTTP verb (GET/POST/PUT).", urgency="high"),
+            NextStep(text="Search for recent API changes or version upgrades that may have altered the expected verb.", urgency="medium"),
+            NextStep(text="Add HTTP verb validation in client code to catch mismatches early.", urgency="low"),
+        ]
+
+    elif _has_real_timeout(log_text):
         primary_failure = "Timeout"
         root_cause = "Operation timed out (explicit timeout evidence present in log)"
         hypotheses = [
@@ -354,7 +411,7 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
             NextStep(text="Log the inner exception type/message and first stack frame to speed up triage.", urgency="medium"),
         ]
 
-    elif _contains(r"\b401\b|unauthorized", log_text):
+    elif _has_real_401(log_text):
         primary_failure = "Downstream service rejected request (401 Unauthorized)"
         root_cause = "Missing/invalid Authorization for downstream call (based on 401 evidence in log)"
         hypotheses = [
@@ -449,51 +506,6 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
             NextStep(text="Enable pool long-hold/leak detection and log slow queries.", urgency="medium"),
         ]
 
-    elif _has_method_not_allowed(log_text):
-        # Extract the endpoint if visible
-        endpoint = _find_first_group(r"requestUri:([^\s*]+)", log_text, 1) or "the endpoint"
-        http_method = _find_first_group(r"(GET|POST|PUT|DELETE|PATCH)\s+-\s+(?:base|full|absolute)", log_text, 1) or "HTTP"
-        primary_failure = f"HTTP 405 MethodNotAllowed on {endpoint}"
-        root_cause = (
-            f"The server rejected the {http_method} request to '{endpoint}' — "
-            f"the endpoint does not support this HTTP verb."
-        )
-        hypotheses = [
-            Hypothesis(rank=1, description=f"Wrong HTTP method used (e.g. POST instead of GET)",
-                       justification="405 MethodNotAllowed means the URL exists but the verb is wrong"),
-            Hypothesis(rank=2, description="API route changed or versioned differently",
-                       justification="Endpoint may have moved and now expects a different verb"),
-            Hypothesis(rank=3, description="Client code calling wrong endpoint URL",
-                       justification="URL mismatch can cause method conflicts"),
-        ]
-        next_steps = [
-            NextStep(text=f"Check the API documentation for '{endpoint}' and verify the correct HTTP verb (GET/POST/PUT).", urgency="high"),
-            NextStep(text="Search for recent API changes or version upgrades that may have altered the expected verb.", urgency="medium"),
-            NextStep(text="Add HTTP verb validation in client code to catch mismatches early.", urgency="low"),
-        ]
-
-    elif _has_tcp_retry_exhausted(log_text):
-        ip = _find_first_group(r"ip '([^']+)'|to '([^']+)'", log_text, 1) or "remote host"
-        retry_count = _find_first_group(r"after (\d+) retr", log_text, 1) or "multiple"
-        primary_failure = f"TCP connection failure to {ip} after {retry_count} retries"
-        root_cause = (
-            f"Could not establish TCP connection to {ip}. "
-            f"All {retry_count} retry attempts failed — the remote host is unreachable or refusing connections."
-        )
-        hypotheses = [
-            Hypothesis(rank=1, description=f"Remote host {ip} is down or unreachable",
-                       justification="Connection attempt timed out on every retry"),
-            Hypothesis(rank=2, description="Firewall or network policy blocking the port",
-                       justification="Socket error 'not connected' can indicate a blocked port"),
-            Hypothesis(rank=3, description="Wrong IP/port configured for the destination service",
-                       justification="Misconfiguration is a common cause of persistent TCP failures"),
-        ]
-        next_steps = [
-            NextStep(text=f"Verify that {ip} is reachable from this host (ping / telnet / nc).", urgency="high"),
-            NextStep(text="Check firewall rules and network ACLs for the target port.", urgency="high"),
-            NextStep(text="Confirm the destination IP and port in the service configuration are correct.", urgency="medium"),
-        ]
-
     else:
         primary_failure = "Unknown"
         root_cause = "Insufficient evidence in provided snippet to determine root cause"
@@ -503,7 +515,6 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
             NextStep(text="Provide a wider time window (±2 minutes) around the failure.", urgency="medium"),
             NextStep(text="Include stack trace / error codes if available.", urgency="low"),
         ]
-
     unknowns = [
         "Exact component boundaries (client vs server) may be unclear without additional context.",
         "Cannot confirm causality direction without earlier log lines.",
