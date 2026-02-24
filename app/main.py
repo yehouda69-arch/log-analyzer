@@ -42,18 +42,37 @@ HTML = r"""
     .hdr-line-top{position:absolute;top:0;left:50%;transform:translateX(-50%);width:1px;height:32px;background:linear-gradient(180deg,transparent,var(--c))}
     header::after{content:'';position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:200px;height:1px;background:linear-gradient(90deg,transparent,var(--c),transparent)}
     .hdr-eyebrow{font-family:'Share Tech Mono',monospace;font-size:.6rem;letter-spacing:6px;color:var(--muted);margin-bottom:12px}
-    .hdr-title{font-family:'Orbitron',monospace;font-size:2.4rem;font-weight:900;letter-spacing:5px;line-height:1}
-    .hdr-title .cyan{color:var(--c);text-shadow:0 0 30px rgba(0,255,255,.7),0 0 60px rgba(0,255,255,.3)}
-    .hdr-title .green{color:var(--g);text-shadow:0 0 30px rgba(0,255,80,.7),0 0 60px rgba(0,255,80,.3)}
+    .hdr-title{font-family:'Orbitron',monospace;font-size:2.4rem;font-weight:900;letter-spacing:5px;line-height:1;position:relative;display:inline-block}
     .hdr-sub{font-family:'Share Tech Mono',monospace;font-size:.72rem;color:var(--muted);letter-spacing:2px;margin-top:12px}
     .hdr-status{display:inline-flex;align-items:center;gap:6px;margin-top:10px;font-family:'Share Tech Mono',monospace;font-size:.6rem;color:rgba(0,255,80,.6);letter-spacing:2px}
     .hdr-dot{width:6px;height:6px;border-radius:50%;background:var(--g);box-shadow:0 0 8px var(--g);animation:pulse-dot 1.5s ease-in-out infinite}
     @keyframes pulse-dot{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.5);opacity:.5}}
 
+    /* ── LETTER ANIMATION ── */
+    .hdr-title .letter{
+      display:inline-block;
+      transition:none;
+      position:relative;
+    }
+    .hdr-title .cyan-l{color:var(--c);text-shadow:0 0 30px rgba(0,255,255,.7),0 0 60px rgba(0,255,255,.3)}
+    .hdr-title .green-l{color:var(--g);text-shadow:0 0 30px rgba(0,255,80,.7),0 0 60px rgba(0,255,80,.3)}
+    .hdr-title .space-l{display:inline-block;width:.4em}
+
+    /* scatter state */
+    .hdr-title.scattering .letter{
+      animation:none;
+    }
+    /* reassemble state */
+    .hdr-title.reassembling .letter{
+      animation:none;
+    }
+    /* idle glow */
+    .hdr-title.idle .cyan-l{color:var(--c);text-shadow:0 0 30px rgba(0,255,255,.7),0 0 60px rgba(0,255,255,.3)}
+    .hdr-title.idle .green-l{color:var(--g);text-shadow:0 0 30px rgba(0,255,80,.7),0 0 60px rgba(0,255,80,.3)}
+
     /* ── INPUT CARD ── */
     .input-card{border:1px solid var(--border-c);background:rgba(0,255,255,.02);position:relative;margin-bottom:12px}
     .input-card::before{content:'';position:absolute;top:0;left:50%;transform:translateX(-50%);width:40%;height:1px;background:linear-gradient(90deg,transparent,var(--c),transparent)}
-    /* corner marks */
     .input-card::after{content:'';position:absolute;bottom:-1px;right:-1px;width:14px;height:14px;border-right:2px solid rgba(0,255,80,.4);border-bottom:2px solid rgba(0,255,80,.4)}
     .corner-tl{position:absolute;top:-1px;left:-1px;width:14px;height:14px;border-left:2px solid rgba(0,255,255,.4);border-top:2px solid rgba(0,255,255,.4);z-index:1}
 
@@ -63,14 +82,12 @@ HTML = r"""
     .fmt-tags{display:flex;gap:5px}
     .fmt{font-family:'Share Tech Mono',monospace;font-size:.52rem;color:rgba(0,255,255,.3);border:1px solid rgba(0,255,255,.1);padding:2px 7px;letter-spacing:1px}
 
-    /* split columns */
     .ic-body{display:grid;grid-template-columns:1fr 1fr;position:relative}
     .split-line{position:absolute;top:8%;left:50%;transform:translateX(-50%);width:1px;height:84%;background:linear-gradient(180deg,transparent,rgba(0,255,255,.25) 30%,rgba(0,255,80,.25) 70%,transparent)}
     .ic-col{padding:20px}
     .ic-col-lbl{font-family:'Share Tech Mono',monospace;font-size:.56rem;letter-spacing:3px;color:rgba(0,255,255,.3);margin-bottom:12px;display:flex;align-items:center;gap:6px}
     .ic-col-lbl::before{content:'▶';font-size:.5rem;color:rgba(0,255,255,.4)}
 
-    /* drop zone */
     .drop-zone{border:1px solid rgba(0,255,255,.13);padding:28px 16px;text-align:center;cursor:pointer;transition:all .3s;background:rgba(0,255,255,.01);min-height:176px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative}
     .drop-zone:hover,.drop-zone.dragover{border-color:rgba(0,255,255,.5);background:rgba(0,255,255,.05);box-shadow:inset 0 0 24px rgba(0,255,255,.04),0 0 24px rgba(0,255,255,.07)}
     .drop-zone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer}
@@ -81,12 +98,10 @@ HTML = r"""
     .file-badge.show{display:flex}
     .file-badge button{margin-right:auto;background:none;border:none;color:var(--red);cursor:pointer;font-size:1rem}
 
-    /* textarea */
     textarea{width:100%;height:176px;background:#000d18;border:1px solid rgba(0,255,255,.1);color:var(--c);font-family:'Share Tech Mono',monospace;font-size:.76rem;padding:13px;resize:vertical;outline:none;line-height:1.9;direction:ltr;transition:all .3s}
     textarea::placeholder{color:rgba(0,255,255,.18)}
     textarea:focus{border-color:rgba(0,255,255,.4);box-shadow:0 0 0 2px rgba(0,255,255,.05),inset 0 0 20px rgba(0,255,255,.02)}
 
-    /* footer bar */
     .ic-footer{display:flex;align-items:center;justify-content:space-between;padding:11px 18px;border-top:1px solid rgba(0,255,255,.07);background:rgba(0,0,0,.35)}
     .ic-info{font-family:'Share Tech Mono',monospace;font-size:.6rem;color:rgba(0,255,255,.28);letter-spacing:1px;line-height:1.8}
     .ic-info b{color:rgba(0,255,80,.5)}
@@ -104,7 +119,6 @@ HTML = r"""
     .btn-analyze:disabled{opacity:.3;cursor:not-allowed}
     .btn-analyze span{position:relative;z-index:1}
 
-    /* ── TIMEOUT ── */
     .timeout-banner{display:none;align-items:center;gap:14px;border:1px solid rgba(255,170,0,.25);background:rgba(255,170,0,.03);padding:14px 18px;margin-bottom:12px;position:relative}
     .timeout-banner::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(255,170,0,.4),transparent)}
     .timeout-banner.show{display:flex}
@@ -116,7 +130,6 @@ HTML = r"""
     .btn-retry{background:rgba(255,170,0,.07);border:1px solid rgba(255,170,0,.25);color:var(--orange);font-family:'Orbitron',monospace;font-size:.6rem;letter-spacing:2px;padding:9px 16px;cursor:pointer;transition:all .2s;white-space:nowrap}
     .btn-retry:hover{background:rgba(255,170,0,.15)}
 
-    /* ── LOADER ── */
     .loader{display:none;flex-direction:column;align-items:center;gap:18px;padding:54px}
     .loader.active{display:flex}
     .loader-rings{position:relative;width:52px;height:52px}
@@ -126,7 +139,6 @@ HTML = r"""
     .loader-txt{font-family:'Share Tech Mono',monospace;font-size:.72rem;color:var(--muted);letter-spacing:3px;animation:flicker 1.4s ease-in-out infinite}
     @keyframes flicker{0%,100%{opacity:.2}50%{opacity:1}}
 
-    /* ── RESULTS ── */
     #results-section{animation:fadeUp .4s ease}
     @keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
 
@@ -143,7 +155,6 @@ HTML = r"""
 
     .results-grid{display:grid;gap:8px}
 
-    /* severity */
     .sev-card{display:flex;align-items:center;gap:16px;padding:16px 20px;border:1px solid var(--border-c);background:rgba(0,255,255,.02);position:relative}
     .sev-card::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(0,255,255,.2),transparent)}
     .sev-stripe{width:3px;height:52px;border-radius:2px;flex-shrink:0}
@@ -164,7 +175,6 @@ HTML = r"""
     .sev-high .sev-bar{background:var(--red);width:100%}
     .sev-desc{font-family:'Share Tech Mono',monospace;font-size:.6rem;color:var(--muted);margin-top:4px}
 
-    /* result cards */
     .rcard{border:1px solid var(--border-c);background:rgba(0,255,255,.018);padding:16px 18px;position:relative;transition:border-color .2s}
     .rcard:hover{border-color:rgba(0,255,255,.3)}
     .rcard::before{content:'';position:absolute;top:0;left:20px;right:20px;height:1px;background:linear-gradient(90deg,transparent,rgba(0,255,255,.12),transparent)}
@@ -203,7 +213,7 @@ HTML = r"""
   <header>
     <div class="hdr-line-top"></div>
     <div class="hdr-eyebrow">DIAGNOSTIC INTERFACE · v2.0.0</div>
-    <div class="hdr-title"><span class="cyan">LOG</span> <span class="green">ANALYZER</span></div>
+    <div class="hdr-title idle" id="hdrTitle"></div>
     <div class="hdr-sub">גרור קובץ לוג או הדבק טקסט — קבל ניתוח מלא תוך שניות</div>
     <div><div class="hdr-status"><div class="hdr-dot"></div>ENGINE ONLINE · SMART TRIM ACTIVE</div></div>
   </header>
@@ -282,6 +292,102 @@ HTML = r"""
 </div>
 
 <script>
+/* ══════════════════════════════════════════
+   LETTER SCATTER / REASSEMBLE ANIMATION
+   ══════════════════════════════════════════ */
+var WORDS = [
+  {text:'LOG',   cls:'cyan-l'},
+  {text:' ',     cls:'space-l'},
+  {text:'ANALYZER', cls:'green-l'}
+];
+
+var titleEl = document.getElementById('hdrTitle');
+var letterEls = [];
+
+// Build letter spans
+(function buildTitle(){
+  WORDS.forEach(function(w){
+    if(w.cls === 'space-l'){
+      var sp = document.createElement('span');
+      sp.className = 'letter space-l';
+      sp.innerHTML = '&nbsp;';
+      titleEl.appendChild(sp);
+      letterEls.push(sp);
+    } else {
+      w.text.split('').forEach(function(ch){
+        var s = document.createElement('span');
+        s.className = 'letter ' + w.cls;
+        s.textContent = ch;
+        titleEl.appendChild(s);
+        letterEls.push(s);
+      });
+    }
+  });
+})();
+
+var scatterInterval = null;
+var isScattering = false;
+
+function scatterLetters(){
+  isScattering = true;
+  titleEl.classList.remove('idle','reassembling');
+  titleEl.classList.add('scattering');
+
+  letterEls.forEach(function(el, i){
+    var delay = Math.random() * 300;
+    var tx = (Math.random() - 0.5) * 260;
+    var ty = (Math.random() - 0.5) * 120;
+    var rot = (Math.random() - 0.5) * 720;
+    var scale = Math.random() * 0.4 + 0.1;
+
+    setTimeout(function(){
+      el.style.transition = 'transform 0.4s cubic-bezier(0.55,0,1,0.45), opacity 0.4s ease';
+      el.style.transform = 'translate('+tx+'px,'+ty+'px) rotate('+rot+'deg) scale('+scale+')';
+      el.style.opacity = '0.08';
+    }, delay);
+  });
+
+  // Keep re-shuffling while analyzing
+  scatterInterval = setInterval(function(){
+    if(!isScattering) return;
+    var idx = Math.floor(Math.random() * letterEls.length);
+    var el = letterEls[idx];
+    var tx = (Math.random() - 0.5) * 260;
+    var ty = (Math.random() - 0.5) * 120;
+    var rot = (Math.random() - 0.5) * 720;
+    var scale = Math.random() * 0.5 + 0.1;
+    el.style.transition = 'transform 0.6s ease, opacity 0.6s ease';
+    el.style.transform = 'translate('+tx+'px,'+ty+'px) rotate('+rot+'deg) scale('+scale+')';
+    el.style.opacity = String(Math.random() * 0.25 + 0.05);
+  }, 180);
+}
+
+function reassembleLetters(onDone){
+  isScattering = false;
+  clearInterval(scatterInterval);
+  titleEl.classList.remove('scattering');
+  titleEl.classList.add('reassembling');
+
+  letterEls.forEach(function(el, i){
+    var delay = i * 38 + Math.random() * 40;
+    setTimeout(function(){
+      el.style.transition = 'transform 0.55s cubic-bezier(0.175,0.885,0.32,1.275), opacity 0.45s ease';
+      el.style.transform = 'translate(0,0) rotate(0deg) scale(1)';
+      el.style.opacity = '1';
+    }, delay);
+  });
+
+  var totalTime = letterEls.length * 38 + 300;
+  setTimeout(function(){
+    titleEl.classList.remove('reassembling');
+    titleEl.classList.add('idle');
+    if(onDone) onDone();
+  }, totalTime);
+}
+
+/* ══════════════════════════════════════════
+   EXISTING APP LOGIC
+   ══════════════════════════════════════════ */
 var lastResult=null, TIMEOUT_MS=90000;
 
 var dropZone=document.getElementById('dropZone'), fileInput=document.getElementById('file');
@@ -309,8 +415,14 @@ function showLoader(){
   document.getElementById('timeoutBanner').classList.remove('show');
   document.getElementById('analyzeBtn').disabled=true;
   li=0;lInt=setInterval(function(){document.getElementById('loaderText').textContent=loaderMsgs[li++%loaderMsgs.length];},900);
+  scatterLetters();
 }
-function hideLoader(){document.getElementById('loader').classList.remove('active');document.getElementById('analyzeBtn').disabled=false;clearInterval(lInt);}
+function hideLoader(){
+  document.getElementById('loader').classList.remove('active');
+  document.getElementById('analyzeBtn').disabled=false;
+  clearInterval(lInt);
+  reassembleLetters();
+}
 
 function escHtml(s){return String(s).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");}
 function txt(x){
