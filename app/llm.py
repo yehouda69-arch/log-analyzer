@@ -138,23 +138,37 @@ def _extract_machine_name(log_text: str) -> Optional[str]:
 
 
 def _has_real_401(log_text: str) -> bool:
-    """
-    Returns True only for a genuine 401 HTTP response or Unauthorized exception —
-    NOT for informational warnings like 'Authorization is missing from headers'
-    which are emitted on health-check requests and don't indicate a real auth failure.
-    """
-    # Explicit 401 status code in response context
+    """Real 401 HTTP response or Unauthorized exception — NOT health-check warnings."""
     if re.search(r"status[\s_-]?code[:\s\"]*401\b", log_text, re.IGNORECASE):
         return True
-    # .NET/Java Unauthorized exception
     if re.search(r"UnauthorizedAccessException|HttpStatusCode\.Unauthorized\b", log_text, re.IGNORECASE):
         return True
-    # Generic 401 token (but NOT preceded by "missing"/"absent" warning patterns)
     if re.search(r"\b401\b", log_text):
-        # Make sure it's not just a health-check WARN
         if not re.search(r"authorization is missing from headers", log_text, re.IGNORECASE):
             return True
     return False
+
+
+def _has_method_not_allowed(log_text: str) -> bool:
+    """HTTP 405 Method Not Allowed — wrong HTTP verb used against an endpoint."""
+    return bool(re.search(
+        r"(MethodNotAllowed|\b405\b|does not support http method"
+        r"|method not allowed|StatusCode=MethodNotAllowed)",
+        log_text, re.IGNORECASE
+    ))
+
+
+def _has_tcp_retry_exhausted(log_text: str) -> bool:
+    """TCP connection failed after all retries — socket unreachable."""
+    return bool(re.search(
+        r"(failed to send.*after \d+ retr"
+        r"|connection attempt.*failed due to timeout"
+        r"|failed to send string to ip"
+        r"|InvalidOperationException.*socket"
+        r"|not connected socket"
+        r"|unzul.ssig.*socket)",  # covers German: "für nicht verbundene Sockets unzulässig"
+        log_text, re.IGNORECASE
+    ))
 
 
 def _severity_from_log(log_text: str) -> int:
@@ -166,12 +180,13 @@ def _severity_from_log(log_text: str) -> int:
         return 3
     if (
         _has_real_401(log_text)
+        or _has_tcp_retry_exhausted(log_text)
         or _contains(r"\b404\b|rate limit|\b429\b|failed to acquire connection", log_text)
         or _has_real_timeout(log_text)
         or _contains(r"(?:system\.)?(?:aggregateexception|nullreferenceexception)\b", log_text)
     ):
         return 2
-    if _contains(r"NotFound|BadRequest|RequestException", log_text):
+    if _contains(r"NotFound|BadRequest|RequestException", log_text) or _has_method_not_allowed(log_text):
         return 2
     return 1
 
@@ -180,7 +195,24 @@ def _severity_label(score: int) -> str:
     return {1: "Low", 2: "Medium", 3: "High"}.get(score, "Medium")
 
 
+def _decode_log(log_text: str) -> str:
+    """
+    Handle UTF-16 encoded logs (common in Windows/.NET environments).
+    If the raw string starts with the UTF-16 BOM, re-decode from bytes.
+    """
+    if log_text.startswith('\xff\xfe') or log_text.startswith('\xfe\xff'):
+        raw = log_text.encode('latin-1')
+        return raw.decode('utf-16', errors='replace')
+    # Heuristic: many null bytes = likely UTF-16 read as latin-1
+    sample = log_text[:200].replace('\r', '').replace('\n', '')
+    if len(sample) > 10 and sum(1 for c in sample if c == '\x00') > len(sample) // 4:
+        raw = log_text.encode('latin-1')
+        return raw.decode('utf-16', errors='replace')
+    return log_text
+
+
 def analyze_log(log_text: str) -> LogAnalysisResponse:
+    log_text = _decode_log(log_text)
     log_text = _smart_trim(log_text)
     facts: List[str] = []
     contradictions: List[str] = []
@@ -212,6 +244,10 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
         facts.append("Top stack frames: " + " → ".join(top_frames))
     if _has_real_401(log_text):
         facts.append("Log contains an authentication failure (401/Unauthorized).")
+    if _has_method_not_allowed(log_text):
+        facts.append("Log contains HTTP 405 MethodNotAllowed — wrong HTTP verb used against endpoint.")
+    if _has_tcp_retry_exhausted(log_text):
+        facts.append("Log indicates TCP connection failure after all retries exhausted.")
     if _has_real_timeout(log_text):
         facts.append("Log contains an explicit timeout event.")
     if _contains(r"active connections:\s*\d+/\d+", log_text):
@@ -316,7 +352,7 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
             NextStep(text="Log the inner exception type/message and first stack frame to speed up triage.", urgency="medium"),
         ]
 
-    elif _has_real_401(log_text):
+    elif _contains(r"\b401\b|unauthorized", log_text):
         primary_failure = "Downstream service rejected request (401 Unauthorized)"
         root_cause = "Missing/invalid Authorization for downstream call (based on 401 evidence in log)"
         hypotheses = [
@@ -409,6 +445,51 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
             NextStep(text="Confirm whether timeout is pool-wait vs DB-call timeout (add scoped timing logs).", urgency="high"),
             NextStep(text="Check DB-side connection counts by client and max_connections.", urgency="high"),
             NextStep(text="Enable pool long-hold/leak detection and log slow queries.", urgency="medium"),
+        ]
+
+    elif _has_method_not_allowed(log_text):
+        # Extract the endpoint if visible
+        endpoint = _find_first_group(r"requestUri:([^\s*]+)", log_text, 1) or "the endpoint"
+        http_method = _find_first_group(r"(GET|POST|PUT|DELETE|PATCH)\s+-\s+(?:base|full|absolute)", log_text, 1) or "HTTP"
+        primary_failure = f"HTTP 405 MethodNotAllowed on {endpoint}"
+        root_cause = (
+            f"The server rejected the {http_method} request to '{endpoint}' — "
+            f"the endpoint does not support this HTTP verb."
+        )
+        hypotheses = [
+            Hypothesis(rank=1, description=f"Wrong HTTP method used (e.g. POST instead of GET)",
+                       justification="405 MethodNotAllowed means the URL exists but the verb is wrong"),
+            Hypothesis(rank=2, description="API route changed or versioned differently",
+                       justification="Endpoint may have moved and now expects a different verb"),
+            Hypothesis(rank=3, description="Client code calling wrong endpoint URL",
+                       justification="URL mismatch can cause method conflicts"),
+        ]
+        next_steps = [
+            NextStep(text=f"Check the API documentation for '{endpoint}' and verify the correct HTTP verb (GET/POST/PUT).", urgency="high"),
+            NextStep(text="Search for recent API changes or version upgrades that may have altered the expected verb.", urgency="medium"),
+            NextStep(text="Add HTTP verb validation in client code to catch mismatches early.", urgency="low"),
+        ]
+
+    elif _has_tcp_retry_exhausted(log_text):
+        ip = _find_first_group(r"ip '([^']+)'|to '([^']+)'", log_text, 1) or "remote host"
+        retry_count = _find_first_group(r"after (\d+) retr", log_text, 1) or "multiple"
+        primary_failure = f"TCP connection failure to {ip} after {retry_count} retries"
+        root_cause = (
+            f"Could not establish TCP connection to {ip}. "
+            f"All {retry_count} retry attempts failed — the remote host is unreachable or refusing connections."
+        )
+        hypotheses = [
+            Hypothesis(rank=1, description=f"Remote host {ip} is down or unreachable",
+                       justification="Connection attempt timed out on every retry"),
+            Hypothesis(rank=2, description="Firewall or network policy blocking the port",
+                       justification="Socket error 'not connected' can indicate a blocked port"),
+            Hypothesis(rank=3, description="Wrong IP/port configured for the destination service",
+                       justification="Misconfiguration is a common cause of persistent TCP failures"),
+        ]
+        next_steps = [
+            NextStep(text=f"Verify that {ip} is reachable from this host (ping / telnet / nc).", urgency="high"),
+            NextStep(text="Check firewall rules and network ACLs for the target port.", urgency="high"),
+            NextStep(text="Confirm the destination IP and port in the service configuration are correct.", urgency="medium"),
         ]
 
     else:
