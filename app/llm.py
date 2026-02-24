@@ -137,6 +137,26 @@ def _extract_machine_name(log_text: str) -> Optional[str]:
     return None
 
 
+def _has_real_401(log_text: str) -> bool:
+    """
+    Returns True only for a genuine 401 HTTP response or Unauthorized exception —
+    NOT for informational warnings like 'Authorization is missing from headers'
+    which are emitted on health-check requests and don't indicate a real auth failure.
+    """
+    # Explicit 401 status code in response context
+    if re.search(r"status[\s_-]?code[:\s\"]*401\b", log_text, re.IGNORECASE):
+        return True
+    # .NET/Java Unauthorized exception
+    if re.search(r"UnauthorizedAccessException|HttpStatusCode\.Unauthorized\b", log_text, re.IGNORECASE):
+        return True
+    # Generic 401 token (but NOT preceded by "missing"/"absent" warning patterns)
+    if re.search(r"\b401\b", log_text):
+        # Make sure it's not just a health-check WARN
+        if not re.search(r"authorization is missing from headers", log_text, re.IGNORECASE):
+            return True
+    return False
+
+
 def _severity_from_log(log_text: str) -> int:
     if _contains(
         r"\b503\b|\b502\b|\b500\b|outofmemory|no space left|sslhandshake"
@@ -145,7 +165,8 @@ def _severity_from_log(log_text: str) -> int:
     ):
         return 3
     if (
-        _contains(r"\b401\b|unauthorized|\b404\b|rate limit|\b429\b|failed to acquire connection", log_text)
+        _has_real_401(log_text)
+        or _contains(r"\b404\b|rate limit|\b429\b|failed to acquire connection", log_text)
         or _has_real_timeout(log_text)
         or _contains(r"(?:system\.)?(?:aggregateexception|nullreferenceexception)\b", log_text)
     ):
@@ -189,7 +210,7 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
         facts.append(f"Log indicates failing hook method: {method_hint}.")
     if top_frames:
         facts.append("Top stack frames: " + " → ".join(top_frames))
-    if _contains(r"\b401\b|unauthorized", log_text):
+    if _has_real_401(log_text):
         facts.append("Log contains an authentication failure (401/Unauthorized).")
     if _has_real_timeout(log_text):
         facts.append("Log contains an explicit timeout event.")
@@ -295,7 +316,7 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
             NextStep(text="Log the inner exception type/message and first stack frame to speed up triage.", urgency="medium"),
         ]
 
-    elif _contains(r"\b401\b|unauthorized", log_text):
+    elif _has_real_401(log_text):
         primary_failure = "Downstream service rejected request (401 Unauthorized)"
         root_cause = "Missing/invalid Authorization for downstream call (based on 401 evidence in log)"
         hypotheses = [
