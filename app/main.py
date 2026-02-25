@@ -42,7 +42,7 @@ HTML = r"""
     .hdr-line-top{position:absolute;top:0;left:50%;transform:translateX(-50%);width:1px;height:32px;background:linear-gradient(180deg,transparent,var(--c))}
     header::after{content:'';position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:200px;height:1px;background:linear-gradient(90deg,transparent,var(--c),transparent)}
     .hdr-eyebrow{font-family:'Share Tech Mono',monospace;font-size:.6rem;letter-spacing:6px;color:var(--muted);margin-bottom:12px}
-    .hdr-title{font-family:'Orbitron',monospace;font-size:2.4rem;font-weight:900;letter-spacing:5px;line-height:1;position:relative;display:inline-block}
+    .hdr-title{font-family:'Orbitron',monospace;font-size:2.4rem;font-weight:900;letter-spacing:5px;line-height:1;position:relative;display:inline-block;direction:ltr;unicode-bidi:isolate}
     .hdr-sub{font-family:'Share Tech Mono',monospace;font-size:.72rem;color:var(--muted);letter-spacing:2px;margin-top:12px}
     .hdr-status{display:inline-flex;align-items:center;gap:6px;margin-top:10px;font-family:'Share Tech Mono',monospace;font-size:.6rem;color:rgba(0,255,80,.6);letter-spacing:2px}
     .hdr-dot{width:6px;height:6px;border-radius:50%;background:var(--g);box-shadow:0 0 8px var(--g);animation:pulse-dot 1.5s ease-in-out infinite}
