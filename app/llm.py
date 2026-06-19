@@ -100,12 +100,27 @@ def _extract_top_frames(log_text: str, limit: int = 3) -> List[str]:
 
 
 def _extract_timestamp(log_text: str) -> Optional[str]:
-    m = re.search(
-        r"\b(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?)\b",
-        log_text
-    )
-    if m:
-        return m.group(1)
+    """
+    Prefer a timestamp that comes from an actual error/failure line —
+    not just the first timestamp in the text, which may belong to an
+    unrelated INFO line that was only included as context.
+    """
+    ts_pattern = r"(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?)"
+    err_pattern = re.compile(r"error|fail|exception|timeout|critical|fatal|denied|refused|unauthorized", re.IGNORECASE)
+
+    first_ts = None
+    for line in log_text.splitlines():
+        m = re.search(ts_pattern, line)
+        if not m:
+            continue
+        if first_ts is None:
+            first_ts = m.group(1)
+        if err_pattern.search(line):
+            return m.group(1)
+
+    if first_ts:
+        return first_ts
+
     m = re.search(r'timestamp="(\d{13})"', log_text)
     if m:
         ts = int(m.group(1)) / 1000
