@@ -437,6 +437,7 @@ function sevTagFromSteps(s){
   return["לא דחוף","rtag-g"];
 }
 function hlText(text){
+  var MASTER=/(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2})|(\/[\w.\-_/]+)|\b(\d+)(ms|s|KB|MB|GB|%)?\b/g;
   return text.split('\n').map(function(line){
     if(!line.trim())return'';
     var low=line.toLowerCase(),cls='';
@@ -444,10 +445,22 @@ function hlText(text){
     else if(/\bwarn/.test(low))cls='hl-warn';
     else if(/\b(success|ok|done)\b/.test(low))cls='hl-ok';
     else if(/\binfo\b/.test(low))cls='hl-info';
-    var out=escHtml(line);
-    out=out.replace(/(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2})/g,function(m){return'<span class="hl-ts">'+m+'</span>';});
-    out=out.replace(/(\/[\w.\-_/]+)/g,function(m){return'<span class="hl-path">'+m+'</span>';});
-    out=out.replace(/\b(\d+)(ms|s|KB|MB|GB|%)?\b/g,function(m,n,u){return'<span class="hl-num">'+n+(u||'')+'</span>';});
+
+    var out='',lastIndex=0,m;
+    MASTER.lastIndex=0;
+    while((m=MASTER.exec(line))!==null){
+      out+=escHtml(line.slice(lastIndex,m.index));
+      if(m[1]){
+        out+='<span class="hl-ts">'+escHtml(m[1])+'</span>';
+      }else if(m[2]){
+        out+='<span class="hl-path">'+escHtml(m[2])+'</span>';
+      }else{
+        out+='<span class="hl-num">'+escHtml(m[3]+(m[4]||''))+'</span>';
+      }
+      lastIndex=m.index+m[0].length;
+    }
+    out+=escHtml(line.slice(lastIndex));
+
     return cls?'<span class="'+cls+'">'+out+'</span>':out;
   }).join('\n');
 }
