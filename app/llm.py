@@ -128,7 +128,10 @@ def _extract_event_id(log_text: str) -> Optional[str]:
 def _extract_machine_name(log_text: str) -> Optional[str]:
     patterns = [
         r'name="log4jmachinename"\s+value="([^"]+)"',
-        r'(?:machinename|hostname|server|host)[=:\s"]+([A-Za-z0-9._-]{3,})',
+        r'(?:machinename|hostname)[=:\s"]+([A-Za-z0-9._-]{3,})',
+        # "server" must not be immediately preceded by error/failed/dns context to avoid
+        # mistaking a failed lookup target (e.g. "DNS resolution failed host=X") for the analyzing server
+        r'(?<!failed )(?<!error )server[=:\s"]+([A-Za-z0-9._-]{3,})',
     ]
     for p in patterns:
         m = re.search(p, log_text, re.IGNORECASE)
@@ -169,6 +172,52 @@ def _has_tcp_retry_exhausted(log_text: str) -> bool:
         r"|unzul.ssig.*socket)",  # covers German: "für nicht verbundene Sockets unzulässig"
         log_text, re.IGNORECASE
     ))
+
+
+def _extract_repeated_timeout_target(log_text: str):
+    """
+    Find the most frequently occurring (target, port) pair tied to timeout/connection-failure lines.
+    Returns (target, port, count) or None if no repeated target found (need 2+ occurrences).
+    """
+    matches = re.findall(r"target=([\d.]+)\s+port=(\d+)", log_text, re.IGNORECASE)
+    if not matches:
+        return None
+    counts = {}
+    for pair in matches:
+        counts[pair] = counts.get(pair, 0) + 1
+    (target, port), count = max(counts.items(), key=lambda kv: kv[1])
+    if count < 2:
+        return None
+    return target, port, count
+
+
+def _extract_repeated_dns_failure(log_text: str):
+    """
+    Find the most frequently occurring hostname tied to DNS resolution failures.
+    Returns (hostname, count) or None.
+    """
+    matches = re.findall(
+        r"dns resolution failed\s+host=([A-Za-z0-9._-]+)",
+        log_text, re.IGNORECASE
+    )
+    if not matches:
+        return None
+    counts = {}
+    for h in matches:
+        counts[h] = counts.get(h, 0) + 1
+    host, count = max(counts.items(), key=lambda kv: kv[1])
+    if count < 2:
+        return None
+    return host, count
+
+
+def _count_vpn_disconnects(log_text: str) -> int:
+    return len(re.findall(r"vpn tunnel disconnected", log_text, re.IGNORECASE))
+
+
+def _count_gateway_timeouts(log_text: str) -> int:
+    return len(re.findall(r"gateway[_ ]timeout|proxy connection failed", log_text, re.IGNORECASE))
+
 
 
 def _severity_from_log(log_text: str) -> int:
@@ -271,6 +320,24 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
     if _contains(r"\b429\b|too many requests|rate limit", log_text):
         facts.append("Log indicates rate limiting (429/Too Many Requests).")
 
+    repeated_target = _extract_repeated_timeout_target(log_text)
+    if repeated_target:
+        t_host, t_port, t_count = repeated_target
+        facts.append(f"Detected {t_count} timeout events targeting {t_host}:{t_port}.")
+
+    repeated_dns = _extract_repeated_dns_failure(log_text)
+    if repeated_dns:
+        d_host, d_count = repeated_dns
+        facts.append(f"Detected {d_count} DNS resolution failures for host '{d_host}'.")
+
+    vpn_count = _count_vpn_disconnects(log_text)
+    if vpn_count >= 2:
+        facts.append(f"Log shows {vpn_count} VPN tunnel disconnect events (keepalive timeout).")
+
+    gw_count = _count_gateway_timeouts(log_text)
+    if gw_count >= 2:
+        facts.append(f"Log shows {gw_count} proxy/gateway timeout (504) events.")
+
     if not facts:
         facts.append("No recognizable failure signature found in provided log snippet.")
 
@@ -344,21 +411,65 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
         ]
 
     elif _has_real_timeout(log_text):
-        primary_failure = "Timeout"
-        root_cause = "Operation timed out (explicit timeout evidence present in log)"
-        hypotheses = [
-            Hypothesis(rank=1, description="DB latency / slow query caused the timeout",
-                       justification="Explicit timeout evidence present in log"),
-            Hypothesis(rank=2, description="Network stall between services",
-                       justification="Timeout can be caused by slow downstream response"),
-            Hypothesis(rank=3, description="Thread/connection pool starvation",
-                       justification="Pool exhaustion can cause operations to time out waiting"),
-        ]
-        next_steps = [
-            NextStep(text="Identify which exact operation timed out (DB query, HTTP call, pool acquire) using scoped timing logs.", urgency="high"),
-            NextStep(text="Check DB slow-query log and network latency metrics around the timestamp.", urgency="high"),
-            NextStep(text="Correlate with error rate and latency dashboards to identify the scope of the impact.", urgency="medium"),
-        ]
+        repeated_target = _extract_repeated_timeout_target(log_text)
+        repeated_dns = _extract_repeated_dns_failure(log_text)
+        vpn_count = _count_vpn_disconnects(log_text)
+        gw_count = _count_gateway_timeouts(log_text)
+
+        if repeated_target:
+            t_host, t_port, t_count = repeated_target
+            primary_failure = f"Repeated connection timeouts to {t_host}:{t_port} ({t_count} occurrences)"
+
+            extra_signals = []
+            if repeated_dns:
+                d_host, d_count = repeated_dns
+                extra_signals.append(f"{d_count} DNS resolution failures for '{d_host}'")
+            if gw_count >= 2:
+                extra_signals.append(f"{gw_count} proxy/gateway timeout (504) events")
+            if vpn_count >= 2:
+                extra_signals.append(f"{vpn_count} VPN tunnel disconnects")
+
+            root_cause = (
+                f"The destination {t_host}:{t_port} consistently failed to respond within the configured "
+                f"timeout, producing {t_count} separate timeout events across the log."
+            )
+            if extra_signals:
+                root_cause += " This coincided with " + ", ".join(extra_signals) + " — consistent with a broader network/connectivity outage rather than an isolated app-level issue."
+
+            hypotheses = [
+                Hypothesis(rank=1, description=f"Target {t_host}:{t_port} is down, overloaded, or unreachable",
+                           justification=f"{t_count} repeated timeouts all point to the same destination"),
+                Hypothesis(rank=2, description="Network path degradation between source and target (latency/packet loss/routing)",
+                           justification="Repeated timeouts to one fixed target typically indicate a network path issue rather than application logic"),
+                Hypothesis(rank=3, description="Firewall/ACL silently dropping packets to this destination",
+                           justification="Silent drops manifest as connection timeouts rather than explicit rejections"),
+            ]
+            next_steps = [
+                NextStep(text=f"Verify {t_host}:{t_port} is up and accepting connections (ping / telnet / nc) from the affected network segment.", urgency="high"),
+                NextStep(text="Run continuous ping/traceroute toward the target during the failure window to check for packet loss or routing changes.", urgency="high"),
+                NextStep(text="Review firewall/ACL and VPN gateway logs for changes around the incident start time.", urgency="medium"),
+            ]
+            if repeated_dns:
+                contradictions.append(
+                    f"DNS resolution failures for '{repeated_dns[0]}' occur alongside the connection timeouts — "
+                    f"verify whether this hostname is expected to resolve to {t_host}; if so, the DNS and TCP failures are likely the same incident."
+                )
+        else:
+            primary_failure = "Timeout"
+            root_cause = "Operation timed out (explicit timeout evidence present in log)"
+            hypotheses = [
+                Hypothesis(rank=1, description="DB latency / slow query caused the timeout",
+                           justification="Explicit timeout evidence present in log"),
+                Hypothesis(rank=2, description="Network stall between services",
+                           justification="Timeout can be caused by slow downstream response"),
+                Hypothesis(rank=3, description="Thread/connection pool starvation",
+                           justification="Pool exhaustion can cause operations to time out waiting"),
+            ]
+            next_steps = [
+                NextStep(text="Identify which exact operation timed out (DB query, HTTP call, pool acquire) using scoped timing logs.", urgency="high"),
+                NextStep(text="Check DB slow-query log and network latency metrics around the timestamp.", urgency="high"),
+                NextStep(text="Correlate with error rate and latency dashboards to identify the scope of the impact.", urgency="medium"),
+            ]
         if _contains(r"(?:system\.)?nullreferenceexception\b", log_text):
             contradictions.append(
                 "NullReferenceException also appears in log — likely a secondary failure "
