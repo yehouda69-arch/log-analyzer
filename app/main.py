@@ -469,23 +469,33 @@ function jumpToLog(searchSnippet){
   if(!lastLogText){setStatus("אין לוג טעון.",true);return;}
   var snippet=extractSearchSnippet(searchSnippet);
   if(!snippet){setStatus("לא נמצא קטע מתאים לסימון.",true);return;}
-  var idx=lastLogText.toLowerCase().indexOf(snippet.toLowerCase());
-  if(idx===-1){setStatus("לא נמצא בלוג: "+snippet,true);return;}
 
   var ta=document.getElementById('log');
-  // make sure original log text is visible in the textarea
   if(ta.value!==lastLogText)ta.value=lastLogText;
 
-  var lineStart=lastLogText.lastIndexOf('\n',idx)+1;
-  var lineEnd=lastLogText.indexOf('\n',idx);
-  if(lineEnd===-1)lineEnd=lastLogText.length;
+  var lines=lastLogText.split('\n');
+  var snipLow=snippet.toLowerCase();
+  var ERR_RE=/error|fail|exception|timeout|critical|fatal|denied|refused|unauthorized/i;
+
+  var bestLine=-1, fallbackLine=-1;
+  for(var i=0;i<lines.length;i++){
+    if(lines[i].toLowerCase().indexOf(snipLow)===-1)continue;
+    if(fallbackLine===-1)fallbackLine=i;
+    if(ERR_RE.test(lines[i])){bestLine=i;break;}
+  }
+  var lineNo=bestLine!==-1?bestLine:fallbackLine;
+  if(lineNo===-1){setStatus("לא נמצא בלוג: "+snippet,true);return;}
+
+  // compute character offset of the chosen line
+  var charIdx=0;
+  for(var k=0;k<lineNo;k++)charIdx+=lines[k].length+1;
+  var lineStart=charIdx;
+  var lineEnd=charIdx+lines[lineNo].length;
 
   ta.focus();
   ta.setSelectionRange(lineStart,lineEnd);
 
-  // scroll the matched line into view within the textarea
-  var lineNo=lastLogText.slice(0,idx).split('\n').length-1;
-  var totalLines=lastLogText.split('\n').length;
+  var totalLines=lines.length;
   var lineHeight=ta.scrollHeight/Math.max(totalLines,1);
   ta.scrollTop=Math.max(0,lineNo*lineHeight-ta.clientHeight/2);
 
