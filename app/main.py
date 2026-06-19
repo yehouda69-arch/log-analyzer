@@ -182,6 +182,8 @@ HTML = r"""
     .rcard-title{font-family:'Orbitron',monospace;font-size:.88rem;letter-spacing:2px;color:var(--text)}
     .rtag{font-family:'Share Tech Mono',monospace;font-size:.6rem;letter-spacing:2px;padding:4px 10px;color:#000;font-weight:700;border-radius:1px}
     .rtag-g{background:var(--g)}.rtag-o{background:var(--orange)}.rtag-r{background:var(--red)}
+    .jump-link{background:transparent;border:1px solid rgba(0,255,255,.2);color:rgba(0,255,255,.6);font-size:.7rem;padding:1px 6px;margin-inline-start:6px;cursor:pointer;border-radius:2px;vertical-align:middle;transition:all .15s;line-height:1.4}
+    .jump-link:hover{border-color:var(--c);color:var(--c);background:rgba(0,255,255,.08)}
     pre{white-space:pre-wrap;word-break:break-word;font-family:'Share Tech Mono',monospace;font-size:.88rem;line-height:1.9;color:var(--text)}
     ul{padding-inline-start:16px}
     li{margin:6px 0;font-family:'Share Tech Mono',monospace;font-size:.86rem;line-height:1.7}
@@ -430,12 +432,73 @@ function txt(x){
   if(typeof x==="object"){if("text"in x&&x.text!=null)return String(x.text);if("title"in x)return String(x.title);try{return JSON.stringify(x);}catch(e){return String(x);}}
   return String(x);
 }
-function sevTagFromSteps(s){
-  var t=(s||[]).map(txt).join(" ").toLowerCase();
-  if(t.includes("immediately")||t.includes("urgent"))return["דחוף","rtag-r"];
-  if(t.includes("check")||t.includes("metrics"))return["בינוני","rtag-o"];
-  return["לא דחוף","rtag-g"];
+var lastLogText='';
+
+function findLineNumber(searchSnippet){
+  if(!lastLogText||!searchSnippet)return -1;
+  var idx=lastLogText.toLowerCase().indexOf(searchSnippet.toLowerCase());
+  if(idx===-1)return -1;
+  return lastLogText.slice(0,idx).split('\n').length-1; // 0-indexed line number
 }
+
+function extractSearchSnippet(text){
+  if(!text)return null;
+  text=String(text);
+  var m;
+  // IP:port
+  m=text.match(/\b\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?\b/);
+  if(m)return m[0];
+  // hostname like word.word.tld
+  m=text.match(/\b[a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+){1,}\b/);
+  if(m)return m[0];
+  // PascalCase exception/error name
+  m=text.match(/\b[A-Za-z]+(?:Exception|Error)\b/);
+  if(m)return m[0];
+  // timestamp
+  m=text.match(/\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}/);
+  if(m)return m[0];
+  // HTTP status code
+  m=text.match(/\b[1-5]\d{2}\b/);
+  if(m)return m[0];
+  // fallback: first 4 words
+  var words=text.trim().split(/\s+/).slice(0,4).join(' ');
+  return words.length>3?words:null;
+}
+
+function jumpToLog(searchSnippet){
+  if(!lastLogText){setStatus("אין לוג טעון.",true);return;}
+  var snippet=extractSearchSnippet(searchSnippet);
+  if(!snippet){setStatus("לא נמצא קטע מתאים לסימון.",true);return;}
+  var idx=lastLogText.toLowerCase().indexOf(snippet.toLowerCase());
+  if(idx===-1){setStatus("לא נמצא בלוג: "+snippet,true);return;}
+
+  var ta=document.getElementById('log');
+  // make sure original log text is visible in the textarea
+  if(ta.value!==lastLogText)ta.value=lastLogText;
+
+  var lineStart=lastLogText.lastIndexOf('\n',idx)+1;
+  var lineEnd=lastLogText.indexOf('\n',idx);
+  if(lineEnd===-1)lineEnd=lastLogText.length;
+
+  ta.focus();
+  ta.setSelectionRange(lineStart,lineEnd);
+
+  // scroll the matched line into view within the textarea
+  var lineNo=lastLogText.slice(0,idx).split('\n').length-1;
+  var totalLines=lastLogText.split('\n').length;
+  var lineHeight=ta.scrollHeight/Math.max(totalLines,1);
+  ta.scrollTop=Math.max(0,lineNo*lineHeight-ta.clientHeight/2);
+
+  ta.scrollIntoView({behavior:'smooth',block:'center'});
+  setStatus("");
+}
+
+function jumpLinkHtml(searchText){
+  if(!searchText)return'';
+  var esc=escHtml(String(searchText)).replace(/'/g,"&#39;");
+  return' <button class="jump-link" onclick="jumpToLog(this.dataset.s)" data-s="'+esc+'" title="גלול וסמן בלוג המקורי">🔍</button>';
+}
+
 function hlText(text){
   var MASTER=/(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2})|(\/[\w.\-_/]+)|\b(\d+)(ms|s|KB|MB|GB|%)?\b/g;
   return text.split('\n').map(function(line){
@@ -484,14 +547,18 @@ function buildBadges(result){
   document.getElementById('summaryBadges').innerHTML=h;
 }
 
-function card(title,content,tagLabel,tagCls){
-  return'<div class="rcard"><div class="rcard-top"><div class="rcard-title">'+title+'</div><span class="rtag '+tagCls+'">'+tagLabel+'</span></div>'+content+'</div>';
+function card(title,content){
+  return'<div class="rcard"><div class="rcard-top"><div class="rcard-title">'+title+'</div></div>'+content+'</div>';
 }
 function listHtml(items){
   if(!items||!items.length)return'<div class="muted">—</div>';
   return'<ul>'+items.map(function(x){
-    if(x&&typeof x==="object"&&x.text!=null){var u=x.urgency?' <span class="muted">('+escHtml(x.urgency)+')</span>':"";return'<li>'+escHtml(x.text)+u+'</li>';}
-    return'<li>'+escHtml(txt(x))+'</li>';
+    if(x&&typeof x==="object"&&x.text!=null){
+      var u=x.urgency?' <span class="muted">('+escHtml(x.urgency)+')</span>':"";
+      return'<li>'+escHtml(x.text)+u+jumpLinkHtml(x.text)+'</li>';
+    }
+    var s=txt(x);
+    return'<li>'+escHtml(s)+jumpLinkHtml(s)+'</li>';
   }).join("")+'</ul>';
 }
 
@@ -501,19 +568,17 @@ function render(result){
   out.innerHTML="";
   buildBadges(result);
   out.innerHTML+=sevCard(result.severity_score,result.severity_label);
-  var st=sevTagFromSteps(result.next_steps);
   var factsHtml=(result.confirmed_facts||[]).length
-    ?'<pre>'+hlText((result.confirmed_facts||[]).map(txt).join('\n'))+'</pre>'
+    ?'<ul>'+(result.confirmed_facts||[]).map(function(f){var s=txt(f);return'<li>'+hlText(s)+jumpLinkHtml(s)+'</li>';}).join('')+'</ul>'
     :'<div class="muted">—</div>';
-  out.innerHTML+=card("עובדות מאושרות ✅",factsHtml,"לא דחוף","rtag-g");
-  out.innerHTML+=card("הכשל הראשי 🎯",'<pre>'+hlText(result.primary_failure||"—")+'</pre>',"בינוני","rtag-o");
-  out.innerHTML+=card("Root Cause 🧠",'<pre>'+hlText(result.root_cause||"—")+'</pre>',"בינוני","rtag-o");
+  out.innerHTML+=card("עובדות מאושרות ✅",factsHtml);
+  out.innerHTML+=card("הכשל הראשי 🎯",'<pre>'+hlText(result.primary_failure||"—")+jumpLinkHtml(result.primary_failure)+'</pre>');
+  out.innerHTML+=card("Root Cause 🧠",'<pre>'+hlText(result.root_cause||"—")+jumpLinkHtml(result.root_cause)+'</pre>');
   var hyp=result.hypotheses_ranked||[];
-  var hypH=hyp.length?'<ul>'+hyp.map(function(h){return'<li><b>#'+h.rank+'</b> '+escHtml(h.description)+' <span class="muted">— '+escHtml(h.justification||"")+'</span></li>';}).join("")+'</ul>':'<div class="muted">—</div>';
-  out.innerHTML+=card("השערות מדורגות 📌",hypH,"בינוני","rtag-o");
-  out.innerHTML+=card("NEXT STEPS ➜",listHtml(result.next_steps),st[0],st[1]);
-  var conTag=(result.contradictions&&result.contradictions.length)?["דחוף","rtag-r"]:["לא דחוף","rtag-g"];
-  out.innerHTML+=card("סתירות / נקודות חשודות 🧩",listHtml(result.contradictions),conTag[0],conTag[1]);
+  var hypH=hyp.length?'<ul>'+hyp.map(function(h){return'<li><b>#'+h.rank+'</b> '+escHtml(h.description)+' <span class="muted">— '+escHtml(h.justification||"")+'</span>'+jumpLinkHtml(h.description)+'</li>';}).join("")+'</ul>':'<div class="muted">—</div>';
+  out.innerHTML+=card("השערות מדורגות 📌",hypH);
+  out.innerHTML+=card("NEXT STEPS ➜",listHtml(result.next_steps));
+  out.innerHTML+=card("סתירות / נקודות חשודות 🧩",listHtml(result.contradictions));
   document.getElementById('results-section').style.display='block';
 }
 
@@ -527,7 +592,7 @@ async function analyze(){
   setStatus("מנתח…");showLoader();
   var file=document.getElementById("file").files&&document.getElementById("file").files[0];
   var logText=document.getElementById("log").value&&document.getElementById("log").value.trim();
-  var controller=new AbortController();
+  lastLogText=document.getElementById("log").value||'';  var controller=new AbortController();
   var tTimer=setTimeout(function(){controller.abort();},TIMEOUT_MS);
   try{
     var res;
