@@ -235,6 +235,26 @@ def _count_gateway_timeouts(log_text: str) -> int:
 
 
 
+def _first_line_number(raw_text: str, needle: Optional[str]) -> Optional[int]:
+    """
+    Return the 1-indexed line number of the first line in raw_text containing
+    `needle` (case-insensitive). Prefers a line that also looks like an
+    error/failure line if multiple lines match.
+    """
+    if not needle:
+        return None
+    needle_low = needle.lower()
+    err_re = re.compile(r"error|fail|exception|timeout|critical|fatal|denied|refused|unauthorized", re.IGNORECASE)
+    fallback = None
+    for i, line in enumerate(raw_text.splitlines(), start=1):
+        if needle_low in line.lower():
+            if fallback is None:
+                fallback = i
+            if err_re.search(line):
+                return i
+    return fallback
+
+
 def _severity_from_log(log_text: str) -> int:
     if _contains(
         r"\b503\b|\b502\b|\b500\b|outofmemory|no space left|sslhandshake"
@@ -279,9 +299,11 @@ def _decode_log(log_text: str) -> str:
 
 def analyze_log(log_text: str) -> LogAnalysisResponse:
     log_text = _decode_log(log_text)
+    raw_log_text = log_text  # keep original (pre-trim) text for accurate line-number lookups
     log_text = _smart_trim(log_text)
     facts: List[str] = []
     contradictions: List[str] = []
+    locator: Optional[str] = None  # most specific identifier for the primary failure, used for line lookup
 
     ex_type = _extract_exception_type(log_text)
     req_ex_type = _extract_request_exception_type(log_text)
@@ -293,7 +315,9 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
 
     # --- Facts ---
     if timestamp:
-        facts.append(f"Failure timestamp: {timestamp}")
+        ts_ln = _first_line_number(raw_log_text, timestamp)
+        ts_loc = f" (line {ts_ln})" if ts_ln else ""
+        facts.append(f"Failure timestamp: {timestamp}{ts_loc}")
     if event_id:
         facts.append(f"Request EventId: {event_id}")
     if machine_name:
@@ -338,12 +362,16 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
     repeated_target = _extract_repeated_timeout_target(log_text)
     if repeated_target:
         t_host, t_port, t_count = repeated_target
-        facts.append(f"Detected {t_count} timeout events targeting {t_host}:{t_port}.")
+        ln = _first_line_number(raw_log_text, t_host)
+        loc_txt = f" (first seen at line {ln})" if ln else ""
+        facts.append(f"Detected {t_count} timeout events targeting {t_host}:{t_port}.{loc_txt}")
 
     repeated_dns = _extract_repeated_dns_failure(log_text)
     if repeated_dns:
         d_host, d_count = repeated_dns
-        facts.append(f"Detected {d_count} DNS resolution failures for host '{d_host}'.")
+        ln = _first_line_number(raw_log_text, d_host)
+        loc_txt = f" (first seen at line {ln})" if ln else ""
+        facts.append(f"Detected {d_count} DNS resolution failures for host '{d_host}'.{loc_txt}")
 
     vpn_count = _count_vpn_disconnects(log_text)
     if vpn_count >= 2:
@@ -380,6 +408,7 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
     if _has_tcp_retry_exhausted(log_text):
         ip = _find_first_group(r"ip '([^']+)'", log_text, 1) or              _find_first_group(r"to '([^']+)'", log_text, 1) or "remote host"
         retry_count = _find_first_group(r"after (\d+) retr", log_text, 1) or "multiple"
+        locator = ip
         primary_failure = f"TCP connection failure to {ip} after {retry_count} retries"
         root_cause = (
             f"Could not establish TCP connection to {ip}. "
@@ -406,6 +435,7 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
     elif _has_method_not_allowed(log_text):
         endpoint = _find_first_group(r"requestUri:([^\s*]+)", log_text, 1) or "the endpoint"
         http_method = _find_first_group(r"(GET|POST|PUT|DELETE|PATCH)\s+-\s+(?:base|full|absolute)", log_text, 1) or "HTTP"
+        locator = endpoint
         primary_failure = f"HTTP 405 MethodNotAllowed on {endpoint}"
         root_cause = (
             f"The server rejected the {http_method} request to '{endpoint}' — "
@@ -433,6 +463,7 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
 
         if repeated_target:
             t_host, t_port, t_count = repeated_target
+            locator = t_host
             primary_failure = f"Repeated connection timeouts to {t_host}:{t_port} ({t_count} occurrences)"
 
             extra_signals = []
@@ -470,6 +501,7 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
                     f"verify whether this hostname is expected to resolve to {t_host}; if so, the DNS and TCP failures are likely the same incident."
                 )
         else:
+            locator = "timeout"
             primary_failure = "Timeout"
             root_cause = "Operation timed out (explicit timeout evidence present in log)"
             hypotheses = [
@@ -493,6 +525,7 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
 
     elif req_ex_type and _contains(r"NotFound|notfound", req_ex_type):
         entity = re.sub(r"(NotFound|Request|Exception|Error)", "", req_ex_type, flags=re.IGNORECASE).strip() or "Entity"
+        locator = req_ex_type
         primary_failure = f"{req_ex_type}: {entity} not found"
         root_cause = f"A requested {entity} resource does not exist or could not be located (based on {req_ex_type} in log)."
         hypotheses = [
@@ -510,6 +543,7 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
         ]
 
     elif _contains(r"(?:system\.)?nullreferenceexception\b", log_text):
+        locator = "NullReferenceException"
         primary_failure = "NullReferenceException"
         root_cause = "NullReferenceException present in log (object reference not set)."
         hypotheses = [
@@ -524,6 +558,7 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
         ]
 
     elif _contains(r"(?:system\.)?aggregateexception\b", log_text) and ex_type:
+        locator = "AggregateException"
         primary_failure = "AggregateException"
         root_cause = "AggregateException present in log (one or more inner exceptions)."
         hypotheses = [
@@ -538,6 +573,7 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
         ]
 
     elif _has_real_401(log_text):
+        locator = "401"
         primary_failure = "Downstream service rejected request (401 Unauthorized)"
         root_cause = "Missing/invalid Authorization for downstream call (based on 401 evidence in log)"
         hypotheses = [
@@ -552,6 +588,7 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
         ]
 
     elif _contains(r"no space left on device", log_text):
+        locator = "no space left on device"
         primary_failure = "Write failed due to disk full"
         root_cause = "No space left on device"
         hypotheses = [Hypothesis(rank=1, description="Disk exhausted on host/container",
@@ -562,6 +599,7 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
         ]
 
     elif _contains(r"outofmemoryerror|heap space|killed process", log_text):
+        locator = "outofmemory" if "outofmemory" in log_text.lower() else ("heap space" if "heap space" in log_text.lower() else "killed process")
         primary_failure = "Process ran out of memory (OOM)"
         root_cause = "Memory limit exceeded (heap exhausted / workload too large)"
         hypotheses = [
@@ -576,6 +614,7 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
         ]
 
     elif _contains(r"sslhandshake|pkix|certificateexpired", log_text):
+        locator = "sslhandshake" if "sslhandshake" in log_text.lower() else ("certificateexpired" if "certificateexpired" in log_text.lower() else "pkix")
         primary_failure = "TLS handshake failed"
         root_cause = "Certificate validation failure (often expired or untrusted chain)"
         hypotheses = [
@@ -590,6 +629,7 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
         ]
 
     elif _contains(r"unknownhostexception|name or service not known", log_text):
+        locator = "unknownhostexception" if "unknownhostexception" in log_text.lower() else "name or service not known"
         primary_failure = "DNS resolution failed"
         root_cause = "Service hostname cannot be resolved (DNS/service discovery issue)"
         hypotheses = [
@@ -604,6 +644,7 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
         ]
 
     elif _contains(r"\b429\b|too many requests|rate limit", log_text):
+        locator = "429" if "429" in log_text else ("rate limit" if "rate limit" in log_text.lower() else "too many requests")
         primary_failure = "Rate limiting (429 Too Many Requests)"
         root_cause = "Traffic exceeded configured quota/limit"
         hypotheses = [
@@ -616,6 +657,7 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
         ]
 
     elif _contains(r"active connections:\s*100/100|failed to acquire connection|waiting for connection", log_text):
+        locator = "failed to acquire connection" if "failed to acquire connection" in log_text.lower() else "active connections"
         primary_failure = "Connection pool exhaustion"
         root_cause = "No available DB connections in pool (pool saturation / acquire failure)"
         hypotheses = [
@@ -645,6 +687,11 @@ def analyze_log(log_text: str) -> LogAnalysisResponse:
         "Exact component boundaries (client vs server) may be unclear without additional context.",
         "Cannot confirm causality direction without earlier log lines.",
     ]
+
+    if locator:
+        line_no = _first_line_number(raw_log_text, locator)
+        if line_no:
+            primary_failure = f"{primary_failure} (line {line_no})"
 
     return LogAnalysisResponse(
         confirmed_facts=facts,
