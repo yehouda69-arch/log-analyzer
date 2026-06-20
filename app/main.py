@@ -434,79 +434,36 @@ function txt(x){
 }
 var lastLogText='';
 
-function findLineNumber(searchSnippet){
-  if(!lastLogText||!searchSnippet)return -1;
-  var idx=lastLogText.toLowerCase().indexOf(searchSnippet.toLowerCase());
-  if(idx===-1)return -1;
-  return lastLogText.slice(0,idx).split('\n').length-1; // 0-indexed line number
-}
-
-function extractSearchSnippet(text){
-  if(!text)return null;
-  text=String(text);
-  var m;
-  // IP:port
-  m=text.match(/\b\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?\b/);
-  if(m)return m[0];
-  // hostname like word.word.tld
-  m=text.match(/\b[a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+){1,}\b/);
-  if(m)return m[0];
-  // PascalCase exception/error name
-  m=text.match(/\b[A-Za-z]+(?:Exception|Error)\b/);
-  if(m)return m[0];
-  // timestamp
-  m=text.match(/\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}/);
-  if(m)return m[0];
-  // HTTP status code
-  m=text.match(/\b[1-5]\d{2}\b/);
-  if(m)return m[0];
-  // fallback: first 4 words
-  var words=text.trim().split(/\s+/).slice(0,4).join(' ');
-  return words.length>3?words:null;
-}
-
-function jumpToLog(searchSnippet){
+function jumpToLine(lineNo){
+  lineNo=parseInt(lineNo,10);
   if(!lastLogText){setStatus("אין לוג טעון.",true);return;}
-  var snippet=extractSearchSnippet(searchSnippet);
-  if(!snippet){setStatus("לא נמצא קטע מתאים לסימון.",true);return;}
+  var lines=lastLogText.split('\n');
+  var idx=lineNo-1;
+  if(isNaN(idx)||idx<0||idx>=lines.length){setStatus("מספר שורה לא תקין.",true);return;}
 
   var ta=document.getElementById('log');
   if(ta.value!==lastLogText)ta.value=lastLogText;
 
-  var lines=lastLogText.split('\n');
-  var snipLow=snippet.toLowerCase();
-  var ERR_RE=/error|fail|exception|timeout|critical|fatal|denied|refused|unauthorized/i;
-
-  var bestLine=-1, fallbackLine=-1;
-  for(var i=0;i<lines.length;i++){
-    if(lines[i].toLowerCase().indexOf(snipLow)===-1)continue;
-    if(fallbackLine===-1)fallbackLine=i;
-    if(ERR_RE.test(lines[i])){bestLine=i;break;}
-  }
-  var lineNo=bestLine!==-1?bestLine:fallbackLine;
-  if(lineNo===-1){setStatus("לא נמצא בלוג: "+snippet,true);return;}
-
-  // compute character offset of the chosen line
   var charIdx=0;
-  for(var k=0;k<lineNo;k++)charIdx+=lines[k].length+1;
-  var lineStart=charIdx;
-  var lineEnd=charIdx+lines[lineNo].length;
+  for(var k=0;k<idx;k++)charIdx+=lines[k].length+1;
 
   ta.focus();
-  ta.setSelectionRange(lineStart,lineEnd);
+  ta.setSelectionRange(charIdx,charIdx+lines[idx].length);
 
-  var totalLines=lines.length;
-  var lineHeight=ta.scrollHeight/Math.max(totalLines,1);
-  ta.scrollTop=Math.max(0,lineNo*lineHeight-ta.clientHeight/2);
+  var lineHeight=ta.scrollHeight/Math.max(lines.length,1);
+  ta.scrollTop=Math.max(0,idx*lineHeight-ta.clientHeight/2);
 
   ta.scrollIntoView({behavior:'smooth',block:'center'});
   setStatus("");
 }
 
-function jumpLinkHtml(searchText){
-  if(!searchText)return'';
-  var esc=escHtml(String(searchText)).replace(/'/g,"&#39;");
-  return' <button class="jump-link" onclick="jumpToLog(this.dataset.s)" data-s="'+esc+'" title="גלול וסמן בלוג המקורי">🔍</button>';
+// Converts any "(line N)" / "(first seen at line N)" reference already present
+// in (already-escaped) text into a clickable jump-to-line button.
+function linkifyLineRefs(html){
+  if(!html)return html;
+  return html.replace(/\((?:first seen at )?line (\d+)\)/gi,function(full,n){
+    return '<button class="jump-link" onclick="jumpToLine('+n+')" title="קפוץ לשורה '+n+' בלוג">📍 line '+n+'</button>';
+  });
 }
 
 function hlText(text){
@@ -565,10 +522,10 @@ function listHtml(items){
   return'<ul>'+items.map(function(x){
     if(x&&typeof x==="object"&&x.text!=null){
       var u=x.urgency?' <span class="muted">('+escHtml(x.urgency)+')</span>':"";
-      return'<li>'+escHtml(x.text)+u+jumpLinkHtml(x.text)+'</li>';
+      return'<li>'+linkifyLineRefs(escHtml(x.text))+u+'</li>';
     }
     var s=txt(x);
-    return'<li>'+escHtml(s)+jumpLinkHtml(s)+'</li>';
+    return'<li>'+linkifyLineRefs(escHtml(s))+'</li>';
   }).join("")+'</ul>';
 }
 
@@ -579,13 +536,13 @@ function render(result){
   buildBadges(result);
   out.innerHTML+=sevCard(result.severity_score,result.severity_label);
   var factsHtml=(result.confirmed_facts||[]).length
-    ?'<ul>'+(result.confirmed_facts||[]).map(function(f){var s=txt(f);return'<li>'+hlText(s)+jumpLinkHtml(s)+'</li>';}).join('')+'</ul>'
+    ?'<ul>'+(result.confirmed_facts||[]).map(function(f){var s=txt(f);return'<li>'+linkifyLineRefs(hlText(s))+'</li>';}).join('')+'</ul>'
     :'<div class="muted">—</div>';
   out.innerHTML+=card("עובדות מאושרות ✅",factsHtml);
-  out.innerHTML+=card("הכשל הראשי 🎯",'<pre>'+hlText(result.primary_failure||"—")+jumpLinkHtml(result.primary_failure)+'</pre>');
-  out.innerHTML+=card("Root Cause 🧠",'<pre>'+hlText(result.root_cause||"—")+jumpLinkHtml(result.root_cause)+'</pre>');
+  out.innerHTML+=card("הכשל הראשי 🎯",'<pre>'+linkifyLineRefs(hlText(result.primary_failure||"—"))+'</pre>');
+  out.innerHTML+=card("Root Cause 🧠",'<pre>'+linkifyLineRefs(hlText(result.root_cause||"—"))+'</pre>');
   var hyp=result.hypotheses_ranked||[];
-  var hypH=hyp.length?'<ul>'+hyp.map(function(h){return'<li><b>#'+h.rank+'</b> '+escHtml(h.description)+' <span class="muted">— '+escHtml(h.justification||"")+'</span>'+jumpLinkHtml(h.description)+'</li>';}).join("")+'</ul>':'<div class="muted">—</div>';
+  var hypH=hyp.length?'<ul>'+hyp.map(function(h){return'<li><b>#'+h.rank+'</b> '+linkifyLineRefs(escHtml(h.description))+' <span class="muted">— '+escHtml(h.justification||"")+'</span></li>';}).join("")+'</ul>':'<div class="muted">—</div>';
   out.innerHTML+=card("השערות מדורגות 📌",hypH);
   out.innerHTML+=card("NEXT STEPS ➜",listHtml(result.next_steps));
   out.innerHTML+=card("סתירות / נקודות חשודות 🧩",listHtml(result.contradictions));
